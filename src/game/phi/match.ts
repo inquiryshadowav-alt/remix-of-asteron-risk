@@ -264,6 +264,11 @@ export function updatePhi(
             if (crew && crew.alive) p.phiQualified = true;
             else { p.phiEliminated = true; p.alive = false; }
           }
+          else if (floor === 'mars' && phi.survivorMode) {
+            // Survivor Mars: fail if fewer than 3 tasks completed in time.
+            if ((p.phiTasks ?? 0) < 3) { p.phiEliminated = true; p.alive = false; }
+            else p.phiQualified = true;
+          }
         }
       }
       // Neon: everyone still alive at timeout qualifies (survival win)
