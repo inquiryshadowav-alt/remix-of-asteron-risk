@@ -485,6 +485,7 @@ export function tickMalteron(
   }
   if (!phi.malteronSpawned) {
     phi.malteronSpawned = true;
+    if (active.length === 0) return;
     const active = state.players.filter(p => !p.phiEliminated);
     // Survivor mode: only 1 human alive; still spawn a meaningful swarm.
     const spawnCount = phi.survivorMode ? Math.max(6, active.length) : active.length;
@@ -560,7 +561,6 @@ export function tickMalteron(
       if (Math.hypot(m.x - b.x, m.y - b.y) < 26) {
         m.alive = false;
         rt.malteronPaths.delete(m.id);
-        addCorpse(state, m.x, m.y, 'malteron', m.facingX);
         phi.pendingMalteronSpawns ??= [];
         phi.pendingMalteronSpawns.push(now + 300);
         return true;
@@ -569,6 +569,7 @@ export function tickMalteron(
     return false;
   });
 
+  if (activeCount === 0) return;
   if (phi.malteronSpawned && phi.pendingMalteronSpawns?.length) {
     const due = phi.pendingMalteronSpawns.filter(t => t <= now).length;
     phi.pendingMalteronSpawns = phi.pendingMalteronSpawns.filter(t => t > now);
