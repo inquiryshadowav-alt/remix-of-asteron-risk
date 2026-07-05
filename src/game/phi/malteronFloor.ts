@@ -567,11 +567,12 @@ export function tickMalteron(
     return false;
   });
 
-  // Maintain malteron count = active players
+  // Maintain malteron count = active players (or survivor swarm minimum)
   const activeCount = state.players.filter(p => !p.phiEliminated).length;
+  const target = phi.survivorMode ? Math.max(6, activeCount) : activeCount;
   const liveMalterons = (phi.malterons ?? []).filter(m => m.alive).length;
-  if (liveMalterons < activeCount && phi.malteronSpawned) {
-    if (liveMalterons + 1 <= activeCount) spawnMalteron(state);
+  if (liveMalterons < target && phi.malteronSpawned) {
+    spawnMalteron(state);
   }
 }
 
