@@ -561,18 +561,27 @@ export function tickMalteron(
         m.alive = false;
         rt.malteronPaths.delete(m.id);
         addCorpse(state, m.x, m.y, 'malteron', m.facingX);
+        phi.pendingMalteronSpawns ??= [];
+        phi.pendingMalteronSpawns.push(now + 300);
         return true;
       }
     }
     return false;
   });
 
+  if (phi.malteronSpawned && phi.pendingMalteronSpawns?.length) {
+    const due = phi.pendingMalteronSpawns.filter(t => t <= now).length;
+    phi.pendingMalteronSpawns = phi.pendingMalteronSpawns.filter(t => t > now);
+    for (let i = 0; i < due; i++) spawnMalteron(state);
+  }
+
   // Maintain malteron count = active players (or survivor swarm minimum)
   const activeCount = state.players.filter(p => !p.phiEliminated).length;
   if (activeCount > 0 && phi.malteronSpawned) {
     const target = phi.survivorMode ? Math.max(6, activeCount) : activeCount;
     const liveMalterons = (phi.malterons ?? []).filter(m => m.alive).length;
-    if (liveMalterons < target) spawnMalteron(state);
+    const pendingMalterons = phi.pendingMalteronSpawns?.length ?? 0;
+    if (liveMalterons + pendingMalterons < target) spawnMalteron(state);
   }
 }
 
