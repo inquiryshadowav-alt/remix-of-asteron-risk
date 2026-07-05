@@ -244,6 +244,7 @@ export function initMalteronFloor(state: GameState) {
   state.phi!.malteronCountdownUntil = performance.now() + 10_000;
   state.phi!.malteronSpawned = false;
   state.phi!.nextMalteronSpawnAt = 0;
+  state.phi!.pendingMalteronSpawns = [];
 }
 
 function spawnMalteron(state: GameState) {
@@ -560,12 +561,19 @@ export function tickMalteron(
         m.alive = false;
         rt.malteronPaths.delete(m.id);
         addCorpse(state, m.x, m.y, 'malteron', m.facingX);
-        setTimeout(() => spawnMalteron(state), 300);
+        phi.pendingMalteronSpawns ??= [];
+        phi.pendingMalteronSpawns.push(now + 300);
         return true;
       }
     }
     return false;
   });
+
+  if (phi.malteronSpawned && phi.pendingMalteronSpawns?.length) {
+    const due = phi.pendingMalteronSpawns.filter(t => t <= now).length;
+    phi.pendingMalteronSpawns = phi.pendingMalteronSpawns.filter(t => t > now);
+    for (let i = 0; i < due; i++) spawnMalteron(state);
+  }
 
   // Maintain malteron count = active players (or survivor swarm minimum)
   const activeCount = state.players.filter(p => !p.phiEliminated).length;

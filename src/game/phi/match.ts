@@ -132,6 +132,7 @@ function initFloor(state: GameState) {
   phi.bullets = [];
   phi.malteronCountdownUntil = undefined;
   phi.malteronSpawned = false;
+  phi.pendingMalteronSpawns = [];
 
   if (floor === 'mars') initMarsFloor(state);
   else if (floor === 'nucleus') initNucleusFloor(state);
