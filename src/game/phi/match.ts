@@ -97,8 +97,8 @@ function initFloor(state: GameState) {
   const phi = state.phi!;
   const floor = currentFloor(state);
   phi.floorDurationMs = FLOOR_DURATION[floor];
-  // Survivor Mars: strict 20-second window to complete 3 out of 5 tasks.
-  if (phi.survivorMode && floor === 'mars') phi.floorDurationMs = 20_000;
+  // Survivor Mars: strict 25-second window to complete 3 out of 5 tasks.
+  if (phi.survivorMode && floor === 'mars') phi.floorDurationMs = 25_000;
   phi.floorStartedAt = performance.now();
   phi.floorPhase = 'active';
   phi.banner = { text: FLOOR_NAMES[floor], until: performance.now() + 2500 };
