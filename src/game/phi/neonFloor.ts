@@ -10,7 +10,9 @@ const MAP_W = COLS * CELL + 40;
 const MAP_H = ROWS * CELL + 40;
 const ORIGIN_X = 20;
 const ORIGIN_Y = 20;
-const VISION_RADIUS = 260;
+const VISION_RADIUS = 380;
+const DANGER_CONTACT_WIDTH = PLAYER_RADIUS + 8;
+const FREQUENCY_INTERCEPT_WIDTH = 14;
 
 const COLORS: NeonColor[] = ['GREEN', 'WHITE', 'BLUE', 'RED'];
 const COLOR_HEX: Record<NeonColor, string> = {
@@ -369,49 +371,87 @@ export function tickNeon(state: GameState, dt: number, keys: Set<string>, now: n
     }
   }
 
-  for (const r of neon.rings) r.radius += r.growSpeed * dt;
+  for (const r of neon.rings) {
+    r.prevRadius = r.radius;
+    r.radius += r.growSpeed * dt;
+  }
   neon.rings = neon.rings.filter(r => r.radius < r.maxRadius);
 
-  // Per-player ring resolution: earliest contact decides fate.
-  // Correct-color contact consumes the ring (only for that player) and
-  // clears the player's immunity. Wrong-color contact kills. Once a
-  // ring is consumed by that player, further contacts with same ring
-  // are ignored for them.
+  const consumedGeneratedRingIds = new Set<number>();
+
+  // Per-player frequency resolution: the earliest event wins.
+  // A matching player-emitted ring can intercept an incoming frequency
+  // before it reaches the player. If the incoming edge reaches the player
+  // first, the player dies. Successful protection clears the generated
+  // ring and ignores every frequency already active on the map for that
+  // player, so later overlap from the same wave cannot kill them.
   for (const p of ALIVE) {
     if (p.phiQualified) continue;
-    // Sort candidate ring contacts by which ring's edge reaches the player
-    // first (smallest |dist - radius|). That determines the FIRST contact.
-    const contacts = neon.rings
-      .filter(r => r.isEvent && !(r.consumedBy?.has(p.id)) && !r.hitPlayers.has(p.id))
-      .map(r => ({ r, d: Math.hypot(r.x - p.x, r.y - p.y) }))
-      .filter(({ r, d }) => Math.abs(d - r.radius) < PLAYER_RADIUS + 6)
-      .sort((a, b) => Math.abs(a.d - a.r.radius) - Math.abs(b.d - b.r.radius));
-    if (contacts.length === 0) continue;
+
     // Post-save grace: after a successful protection, any further rings
     // that touch the player are ignored (only for the grace window).
     if ((p.phiProtectedUntil ?? 0) > now) {
+      const contacts = neon.rings
+        .filter(r => r.isEvent && !(r.consumedBy?.has(p.id)) && !r.hitPlayers.has(p.id))
+        .map(r => ({ r, d: Math.hypot(r.x - p.x, r.y - p.y) }))
+        .filter(({ r, d }) => Math.abs(d - r.radius) < DANGER_CONTACT_WIDTH);
       for (const c of contacts) c.r.hitPlayers.add(p.id);
       continue;
     }
-    const first = contacts[0].r;
-    const immuneMatch = p.neonImmuneColor === first.color && (p.neonImmuneUntil ?? 0) > now;
-    if (immuneMatch) {
-      // Correct freq intercepts incoming → survive, generated freq disappears,
-      // player returns to normal state, short protection window prevents
-      // same-frame wrong rings from killing.
-      first.consumedBy ??= new Set();
-      first.consumedBy.add(p.id);
+
+    const eventRings = neon.rings.filter(r => r.isEvent && !(r.consumedBy?.has(p.id)) && !r.hitPlayers.has(p.id));
+    const playerRings = neon.rings.filter(r => !r.isEvent && r.ownerId === p.id && !consumedGeneratedRingIds.has(r.id));
+    let firstDanger: { ring: NeonRing; t: number } | null = null;
+    for (const r of eventRings) {
+      const d = Math.hypot(r.x - p.x, r.y - p.y);
+      const prev = r.prevRadius ?? r.radius;
+      const delta = Math.max(0.0001, r.radius - prev);
+      const edgeNow = Math.abs(d - r.radius) < DANGER_CONTACT_WIDTH;
+      const crossedThisFrame = prev < d - DANGER_CONTACT_WIDTH && r.radius >= d - DANGER_CONTACT_WIDTH;
+      if (!edgeNow && !crossedThisFrame) continue;
+      const t = crossedThisFrame ? Math.max(0, Math.min(1, (d - DANGER_CONTACT_WIDTH - prev) / delta)) : 0;
+      if (!firstDanger || t < firstDanger.t) firstDanger = { ring: r, t };
+    }
+
+    let firstSave: { eventRing: NeonRing; playerRing: NeonRing; t: number } | null = null;
+    for (const eventRing of eventRings) {
+      for (const playerRing of playerRings) {
+        if (playerRing.color !== eventRing.color) continue;
+        const d = Math.hypot(eventRing.x - playerRing.x, eventRing.y - playerRing.y);
+        const prevSum = (eventRing.prevRadius ?? eventRing.radius) + (playerRing.prevRadius ?? playerRing.radius);
+        const sum = eventRing.radius + playerRing.radius;
+        const delta = Math.max(0.0001, sum - prevSum);
+        const touchingNow = d <= sum + FREQUENCY_INTERCEPT_WIDTH;
+        const crossedThisFrame = prevSum < d - FREQUENCY_INTERCEPT_WIDTH && sum >= d - FREQUENCY_INTERCEPT_WIDTH;
+        if (!touchingNow && !crossedThisFrame) continue;
+        const t = crossedThisFrame ? Math.max(0, Math.min(1, (d - FREQUENCY_INTERCEPT_WIDTH - prevSum) / delta)) : 0;
+        if (!firstSave || t < firstSave.t) firstSave = { eventRing, playerRing, t };
+      }
+    }
+
+    const immuneDangerMatch = firstDanger && p.neonImmuneColor === firstDanger.ring.color && (p.neonImmuneUntil ?? 0) > now;
+    const saveWins = firstSave && (!firstDanger || firstSave.t <= firstDanger.t || firstSave.eventRing.id === firstDanger.ring.id);
+
+    if (saveWins || immuneDangerMatch) {
+      const savedRing = firstSave?.eventRing ?? firstDanger!.ring;
+      savedRing.consumedBy ??= new Set();
+      savedRing.consumedBy.add(p.id);
+      savedRing.hitPlayers.add(p.id);
+      if (firstSave) consumedGeneratedRingIds.add(firstSave.playerRing.id);
       p.neonImmuneColor = undefined;
       p.neonImmuneUntil = 0;
-      p.phiProtectedUntil = now + 700;
-      for (let i = 1; i < contacts.length; i++) contacts[i].r.hitPlayers.add(p.id);
-    } else {
+      p.phiProtectedUntil = now + 1200;
+      for (const r of eventRings) r.hitPlayers.add(p.id);
+    } else if (firstDanger) {
       // Wrong frequency reaches first → die (covers both "no protection"
       // and "player emitted the wrong color and it met a wrong ring first").
       p.phiEliminated = true;
       p.alive = false;
       addCorpse(state, p.x, p.y, 'player', p.facingX ?? 1);
     }
+  }
+  if (consumedGeneratedRingIds.size > 0) {
+    neon.rings = neon.rings.filter(r => !consumedGeneratedRingIds.has(r.id));
   }
 
   for (const p of ALIVE) {
@@ -566,8 +606,9 @@ function drawRings(ctx: CanvasRenderingContext2D, neon: NeonState) {
 function applyVisionMask(ctx: CanvasRenderingContext2D, cx: number, cy: number, w: number, h: number) {
   ctx.save();
   ctx.globalCompositeOperation = 'destination-in';
-  const g = ctx.createRadialGradient(cx, cy, VISION_RADIUS * 0.55, cx, cy, VISION_RADIUS);
+  const g = ctx.createRadialGradient(cx, cy, VISION_RADIUS * 0.72, cx, cy, VISION_RADIUS);
   g.addColorStop(0, 'rgba(255,255,255,1)');
+  g.addColorStop(0.82, 'rgba(255,255,255,1)');
   g.addColorStop(1, 'rgba(255,255,255,0)');
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, w, h);
@@ -618,8 +659,24 @@ export function renderNeon(ctx: CanvasRenderingContext2D, state: GameState, canv
   drawRings(ctx, neon);
   ctx.restore();
 
+  // Keep the main character readable even when rings and fog overlap.
+  if (!human.phiEliminated) {
+    ctx.save();
+    ctx.translate(-camX, -camY);
+    ctx.shadowColor = '#ffffff';
+    ctx.shadowBlur = 12;
+    drawRobot(ctx, {
+      x: human.x, y: human.y,
+      dirX: human.direction.x, dirY: human.direction.y,
+      moving: Math.abs(human.direction.x) + Math.abs(human.direction.y) > 0.15,
+      keyId: `neon-human-${human.id}`,
+      label: human.name,
+    });
+    ctx.restore();
+  }
+
   // Vision-edge vignette
-  const vg = ctx.createRadialGradient(hx, hy, VISION_RADIUS * 0.5, hx, hy, VISION_RADIUS * 1.4);
+  const vg = ctx.createRadialGradient(hx, hy, VISION_RADIUS * 0.95, hx, hy, VISION_RADIUS * 1.55);
   vg.addColorStop(0, 'rgba(0,0,0,0)');
   vg.addColorStop(1, 'rgba(0,0,0,0.85)');
   ctx.fillStyle = vg;

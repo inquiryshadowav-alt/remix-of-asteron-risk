@@ -66,6 +66,7 @@ export interface NeonRing {
   x: number; y: number;
   color: NeonColor;
   radius: number;
+  prevRadius?: number;
   maxRadius: number;
   growSpeed: number; // px/ms
   spawnedAt: number;
@@ -148,6 +149,7 @@ export interface PhiState {
   malterons?: PhiMalteron[];
   crew?: PhiCrew[];
   nextMalteronSpawnAt?: number;
+  pendingMalteronSpawns?: number[];
   nextMalteronId?: number;
   nextCrewId?: number;
   arenaCX?: number; arenaCY?: number; arenaR?: number;

@@ -244,6 +244,7 @@ export function initMalteronFloor(state: GameState) {
   state.phi!.malteronCountdownUntil = performance.now() + 10_000;
   state.phi!.malteronSpawned = false;
   state.phi!.nextMalteronSpawnAt = 0;
+  state.phi!.pendingMalteronSpawns = [];
 }
 
 function spawnMalteron(state: GameState) {
@@ -483,14 +484,14 @@ export function tickMalteron(
     return;
   }
   if (!phi.malteronSpawned) {
-    phi.malteronSpawned = true;
     const active = state.players.filter(p => !p.phiEliminated);
-    // Survivor mode: only 1 human alive; still spawn a meaningful swarm.
-    const spawnCount = phi.survivorMode ? Math.max(6, active.length) : active.length;
-    for (let i = 0; i < spawnCount; i++) spawnMalteron(state);
-    phi.banner = { text: 'MALTERON APOCALYPSE!', until: now + 1500 };
+    if (active.length > 0) {
+      phi.malteronSpawned = true;
+      const spawnCount = phi.survivorMode ? Math.max(6, active.length) : active.length;
+      for (let i = 0; i < spawnCount; i++) spawnMalteron(state);
+      phi.banner = { text: 'MALTERON APOCALYPSE!', until: now + 1500 };
+    }
   }
-
   // Time-sliced Malteron AI: only 4 update per frame (round-robin).
   const malteronList = (phi.malterons ?? []).filter(m => m.alive);
   const AI_BATCH = 4;
@@ -560,22 +561,29 @@ export function tickMalteron(
         m.alive = false;
         rt.malteronPaths.delete(m.id);
         addCorpse(state, m.x, m.y, 'malteron', m.facingX);
-        setTimeout(() => spawnMalteron(state), 300);
+        phi.pendingMalteronSpawns ??= [];
+        phi.pendingMalteronSpawns.push(now + 300);
         return true;
       }
     }
     return false;
   });
 
+  if (phi.malteronSpawned && phi.pendingMalteronSpawns?.length) {
+    const due = phi.pendingMalteronSpawns.filter(t => t <= now).length;
+    phi.pendingMalteronSpawns = phi.pendingMalteronSpawns.filter(t => t > now);
+    for (let i = 0; i < due; i++) spawnMalteron(state);
+  }
+
   // Maintain malteron count = active players (or survivor swarm minimum)
   const activeCount = state.players.filter(p => !p.phiEliminated).length;
-  const target = phi.survivorMode ? Math.max(6, activeCount) : activeCount;
-  const liveMalterons = (phi.malterons ?? []).filter(m => m.alive).length;
-  if (liveMalterons < target && phi.malteronSpawned) {
-    spawnMalteron(state);
+  if (activeCount > 0 && phi.malteronSpawned) {
+    const target = phi.survivorMode ? Math.max(6, activeCount) : activeCount;
+    const liveMalterons = (phi.malterons ?? []).filter(m => m.alive).length;
+    const pendingMalterons = phi.pendingMalteronSpawns?.length ?? 0;
+    if (liveMalterons + pendingMalterons < target) spawnMalteron(state);
   }
 }
-
 
 // ============ Rendering ============
 
