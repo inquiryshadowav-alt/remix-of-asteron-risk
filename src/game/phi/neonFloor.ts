@@ -379,27 +379,39 @@ export function tickNeon(state: GameState, dt: number, keys: Set<string>, now: n
   // are ignored for them.
   for (const p of ALIVE) {
     if (p.phiQualified) continue;
-    // Sort rings by absolute distance from player edge
+    // Sort candidate ring contacts by which ring's edge reaches the player
+    // first (smallest |dist - radius|). That determines the FIRST contact.
     const contacts = neon.rings
       .filter(r => r.isEvent && !(r.consumedBy?.has(p.id)) && !r.hitPlayers.has(p.id))
       .map(r => ({ r, d: Math.hypot(r.x - p.x, r.y - p.y) }))
       .filter(({ r, d }) => Math.abs(d - r.radius) < PLAYER_RADIUS + 6)
       .sort((a, b) => Math.abs(a.d - a.r.radius) - Math.abs(b.d - b.r.radius));
     if (contacts.length === 0) continue;
+    // Post-save grace: after a successful protection, any further rings
+    // that touch the player are ignored (only for the grace window).
+    if ((p.phiProtectedUntil ?? 0) > now) {
+      for (const c of contacts) c.r.hitPlayers.add(p.id);
+      continue;
+    }
     const first = contacts[0].r;
     const immuneMatch = p.neonImmuneColor === first.color && (p.neonImmuneUntil ?? 0) > now;
     if (immuneMatch) {
+      // Correct freq intercepts incoming → survive, generated freq disappears,
+      // player returns to normal state, short protection window prevents
+      // same-frame wrong rings from killing.
       first.consumedBy ??= new Set();
       first.consumedBy.add(p.id);
       p.neonImmuneColor = undefined;
       p.neonImmuneUntil = 0;
+      p.phiProtectedUntil = now + 700;
+      for (let i = 1; i < contacts.length; i++) contacts[i].r.hitPlayers.add(p.id);
     } else {
+      // Wrong frequency reaches first → die (covers both "no protection"
+      // and "player emitted the wrong color and it met a wrong ring first").
       p.phiEliminated = true;
       p.alive = false;
       addCorpse(state, p.x, p.y, 'player', p.facingX ?? 1);
     }
-    // Mark all other overlapping rings as "seen" so they don't stack-kill same frame.
-    for (let i = 1; i < contacts.length; i++) contacts[i].r.hitPlayers.add(p.id);
   }
 
   for (const p of ALIVE) {
