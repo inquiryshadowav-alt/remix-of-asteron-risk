@@ -12,7 +12,10 @@ export function initMarsFloor(state: GameState) {
   state.projectiles = [];
   state.platforms = [];
   const pc = state.players.length;
-  const total = pc * 2;
+  // Survivor mode: fixed pool of 5 stations, player must complete 3 within
+  // the timer. Competition mode: pc*2 stations, first to 3 tasks qualifies.
+  const survivor = !!state.phi?.survivorMode;
+  const total = survivor ? 5 : pc * 2;
   // All stations belong to team 0 (single crew faction).
   const stations = createTaskStations(total, 0 as any, 1);
   state.taskStations = stations;
