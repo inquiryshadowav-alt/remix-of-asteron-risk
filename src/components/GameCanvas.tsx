@@ -245,6 +245,41 @@ export default function GameCanvas({ gameState, setGameState, onExit }: Props) {
         }
       }
 
+      // Dragon Chase audio — active only on Neon floor.
+      const audio = dragonAudioRef.current;
+      if (audio) {
+        const s = stateRef.current;
+        const phi = s.phi;
+        const onNeon = s.mode === 'phi' && phi
+          && phi.floorSequence[phi.currentFloorIdx] === 'neon'
+          && phi.floorPhase === 'active'
+          && phi.neon;
+        if (onNeon) {
+          const h = s.players[0];
+          const segs = phi.neon!.dragon.segments;
+          let nearest = Infinity;
+          for (const seg of segs) {
+            const d = Math.hypot(seg.x - h.x, seg.y - h.y);
+            if (d < nearest) nearest = d;
+          }
+          // Distance-to-volume: <=180 -> 0.7, ~450 -> 0.10, >=900 -> 0
+          let vol = 0;
+          if (nearest <= 180) vol = 0.7;
+          else if (nearest <= 450) {
+            const t = (450 - nearest) / (450 - 180);
+            vol = 0.10 + t * (0.7 - 0.10);
+          } else if (nearest <= 900) {
+            const t = (900 - nearest) / (900 - 450);
+            vol = t * 0.10;
+          }
+          audio.volume = Math.max(0, Math.min(1, vol));
+          if (audio.paused) audio.play().catch(() => {});
+        } else if (!audio.paused) {
+          audio.pause();
+          audio.currentTime = 0;
+        }
+      }
+
       animRef.current = requestAnimationFrame(loop);
     };
 
