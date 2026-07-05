@@ -14,6 +14,7 @@ import PhiHUD from './PhiHUD';
 import DeathModal from './DeathModal';
 import { preloadGameAssets } from '@/game/preload';
 import { startGamepadBridge, stopGamepadBridge } from '@/game/gamepad';
+import dragonAudio from '@/assets/dragon-chase.mp3.asset.json';
 
 interface Props {
   gameState: GameState;
@@ -54,6 +55,19 @@ export default function GameCanvas({ gameState, setGameState, onExit }: Props) {
     startGamepadBridge();
     return () => stopGamepadBridge();
   }, []);
+
+  // Dragon Chase looping audio — active only on Neon floor. Volume scales
+  // with distance from player to nearest dragon segment.
+  const dragonAudioRef = useRef<HTMLAudioElement | null>(null);
+  useEffect(() => {
+    const a = new Audio(dragonAudio.url);
+    a.loop = true;
+    a.volume = 0;
+    a.preload = 'auto';
+    dragonAudioRef.current = a;
+    return () => { a.pause(); a.src = ''; dragonAudioRef.current = null; };
+  }, []);
+
 
 
   // On mobile, request fullscreen on the first user interaction (browsers
