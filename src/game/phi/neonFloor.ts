@@ -1,0 +1,617 @@
+import { GameState, PLAYER_RADIUS, NeonMazeCell, NeonState, NeonColor, NeonRing, NeonDragon } from '../types';
+import { drawRobot } from './robot';
+import { addCorpse, renderCorpses, renderSpawnFx, PERSONALITY } from './shared';
+
+const COLS = 22;
+const ROWS = 14;
+const CELL = 104;
+const WALL_LW = 6;
+const MAP_W = COLS * CELL + 40;
+const MAP_H = ROWS * CELL + 40;
+const ORIGIN_X = 20;
+const ORIGIN_Y = 20;
+const VISION_RADIUS = 260;
+
+const COLORS: NeonColor[] = ['GREEN', 'WHITE', 'BLUE', 'RED'];
+const COLOR_HEX: Record<NeonColor, string> = {
+  GREEN: '#5fff8a', WHITE: '#f5f7ff', BLUE: '#57b8ff', RED: '#ff5a6b',
+};
+
+// -------- Maze generation --------
+function newMaze(): NeonMazeCell[][] {
+  const m: NeonMazeCell[][] = [];
+  for (let r = 0; r < ROWS; r++) {
+    m[r] = [];
+    for (let c = 0; c < COLS; c++) {
+      m[r][c] = { r, c, walls: { N: true, E: true, S: true, W: true } };
+    }
+  }
+  const inb = (r: number, c: number) => r >= 0 && r < ROWS && c >= 0 && c < COLS;
+  const opp: Record<string, 'N' | 'E' | 'S' | 'W'> = { N: 'S', S: 'N', E: 'W', W: 'E' };
+  const dxy: Record<'N' | 'E' | 'S' | 'W', [number, number]> = { N: [-1, 0], S: [1, 0], E: [0, 1], W: [0, -1] };
+  const stack: [number, number][] = [[0, 0]];
+  const visited = new Set<string>(['0,0']);
+  while (stack.length) {
+    const [r, c] = stack[stack.length - 1];
+    const dirs = (['N', 'E', 'S', 'W'] as Array<'N' | 'E' | 'S' | 'W'>).slice().sort(() => Math.random() - 0.5);
+    let carved = false;
+    for (const d of dirs) {
+      const [dr, dc] = dxy[d];
+      const nr = r + dr, nc = c + dc;
+      if (!inb(nr, nc)) continue;
+      if (visited.has(`${nr},${nc}`)) continue;
+      m[r][c].walls[d] = false;
+      m[nr][nc].walls[opp[d]] = false;
+      visited.add(`${nr},${nc}`);
+      stack.push([nr, nc]);
+      carved = true; break;
+    }
+    if (!carved) stack.pop();
+  }
+  for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
+    const cell = m[r][c];
+    const wallSides = (['N', 'E', 'S', 'W'] as Array<'N' | 'E' | 'S' | 'W'>).filter(d => cell.walls[d]);
+    if (wallSides.length >= 3) {
+      const avail = wallSides.filter(d => {
+        const [dr, dc] = dxy[d];
+        return inb(r + dr, c + dc);
+      });
+      if (!avail.length) continue;
+      const pick = avail[Math.floor(Math.random() * avail.length)];
+      const [dr, dc] = dxy[pick];
+      cell.walls[pick] = false;
+      m[r + dr][c + dc].walls[opp[pick]] = false;
+    }
+  }
+  return m;
+}
+
+function cellCenter(r: number, c: number) {
+  return { x: ORIGIN_X + c * CELL + CELL / 2, y: ORIGIN_Y + r * CELL + CELL / 2 };
+}
+
+function shuffleMapping(): Record<'2' | '3' | '4' | '5', NeonColor> {
+  const shuf = [...COLORS].sort(() => Math.random() - 0.5);
+  return { '2': shuf[0], '3': shuf[1], '4': shuf[2], '5': shuf[3] };
+}
+
+export function initNeonFloor(state: GameState) {
+  state.mapWidth = MAP_W;
+  state.mapHeight = MAP_H;
+  state.taskStations = [];
+  state.doors = [];
+  state.powerups = [];
+  state.projectiles = [];
+  state.platforms = [];
+
+  const maze = newMaze();
+  const mapping = shuffleMapping();
+  const colorToKey: Record<NeonColor, '2' | '3' | '4' | '5'> = {} as any;
+  (['2', '3', '4', '5'] as const).forEach(k => (colorToKey[mapping[k]] = k));
+
+  const startR = Math.floor(ROWS / 2), startC = Math.floor(COLS / 2);
+  const head = cellCenter(startR, startC);
+  const dragon: NeonDragon = {
+    segments: Array.from({ length: 40 }, () => ({ x: head.x, y: head.y })),
+    headCell: { r: startR, c: startC },
+    dir: 'E',
+    cellProgress: 0,
+  };
+
+  const neon: NeonState = {
+    maze, cols: COLS, rows: ROWS, cellSize: CELL,
+    originX: ORIGIN_X, originY: ORIGIN_Y,
+    dragon,
+    rings: [], nextRingId: 1,
+    mapping, colorToKey,
+    nextEventAt: performance.now() + 2500,
+    pausedUntil: 0,
+    patternStep: 0,
+    perPlayer: new Map(),
+  };
+  state.phi!.neon = neon;
+
+  // Randomised spawns across all cells so each player begins in a
+  // different spot every match.
+  const active = state.players.filter(p => !p.phiEliminated);
+  const allCells: [number, number][] = [];
+  for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) allCells.push([r, c]);
+  allCells.sort(() => Math.random() - 0.5);
+  active.forEach((p, i) => {
+    const [r, c] = allCells[i % allCells.length];
+    const pos = cellCenter(r, c);
+    p.x = pos.x; p.y = pos.y;
+    p.direction = { x: 0, y: 0 };
+    p.neonImmuneColor = undefined;
+    p.neonImmuneUntil = 0;
+  });
+}
+
+// ---- Dragon walk ----
+const OPP: Record<'N' | 'E' | 'S' | 'W', 'N' | 'E' | 'S' | 'W'> = { N: 'S', S: 'N', E: 'W', W: 'E' };
+const DIR_DXY: Record<'N' | 'E' | 'S' | 'W', [number, number]> = { N: [-1, 0], S: [1, 0], E: [0, 1], W: [0, -1] };
+
+function pickDragonDir(neon: NeonState): 'N' | 'E' | 'S' | 'W' {
+  const cell = neon.maze[neon.dragon.headCell.r][neon.dragon.headCell.c];
+  const opts = (['N', 'E', 'S', 'W'] as Array<'N' | 'E' | 'S' | 'W'>).filter(d => !cell.walls[d]);
+  const forward = opts.filter(d => d !== OPP[neon.dragon.dir]);
+  const pool = forward.length ? forward : opts;
+  return pool[Math.floor(Math.random() * pool.length)] ?? neon.dragon.dir;
+}
+
+function tickDragon(state: GameState, dt: number) {
+  const neon = state.phi!.neon!;
+  const d = neon.dragon;
+  const speed = 5.0 / 1000; // cells per ms — faster, scarier
+  d.cellProgress += speed * dt;
+
+  const curCenter = cellCenter(d.headCell.r, d.headCell.c);
+  const [dr, dc] = DIR_DXY[d.dir];
+  const nextR = d.headCell.r + dr, nextC = d.headCell.c + dc;
+  const nextCenter = cellCenter(nextR, nextC);
+
+  let hx: number, hy: number;
+  if (d.cellProgress >= 1) {
+    d.headCell.r = nextR; d.headCell.c = nextC;
+    d.cellProgress = 0;
+    d.dir = pickDragonDir(neon);
+    const c2 = cellCenter(d.headCell.r, d.headCell.c);
+    hx = c2.x; hy = c2.y;
+  } else {
+    hx = curCenter.x + (nextCenter.x - curCenter.x) * d.cellProgress;
+    hy = curCenter.y + (nextCenter.y - curCenter.y) * d.cellProgress;
+  }
+  for (let i = d.segments.length - 1; i > 0; i--) {
+    const target = d.segments[i - 1];
+    const seg = d.segments[i];
+    seg.x += (target.x - seg.x) * 0.42;
+    seg.y += (target.y - seg.y) * 0.42;
+  }
+  d.segments[0].x = hx;
+  d.segments[0].y = hy;
+}
+
+// ---- Frequency events with quadrant placement + overlap rule ----
+function pickCellForEvent(state: GameState, now: number): { r: number; c: number; quadrant: number } {
+  const neon = state.phi!.neon!;
+  const quadCounts = [0, 0, 0, 0];
+  const activeEvents = neon.rings.filter(r => r.isEvent && r.radius < r.maxRadius);
+  for (const r of activeEvents) quadCounts[r.quadrant ?? 0]++;
+  let targetQuad = 0;
+  let minC = quadCounts[0];
+  for (let q = 1; q < 4; q++) if (quadCounts[q] < minC) { minC = quadCounts[q]; targetQuad = q; }
+  const qc = Math.floor(COLS / 2), qr = Math.floor(ROWS / 2);
+  const cMin = (targetQuad % 2) * qc;
+  const cMax = cMin + qc;
+  const rMin = Math.floor(targetQuad / 2) * qr;
+  const rMax = rMin + qr;
+
+  // Try many candidates; accept when far from other event centers OR inside one.
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const rr = rMin + Math.floor(Math.random() * Math.max(1, rMax - rMin));
+    const cc = cMin + Math.floor(Math.random() * Math.max(1, cMax - cMin));
+    const p = cellCenter(rr, cc);
+    let ok = true;
+    for (const ev of activeEvents) {
+      const dist = Math.hypot(ev.x - p.x, ev.y - p.y);
+      const insideOther = dist < ev.radius;
+      const tooClose = dist < CELL * 3;
+      if (tooClose && !insideOther) { ok = false; break; }
+    }
+    if (ok) return { r: rr, c: cc, quadrant: targetQuad };
+  }
+  // Fallback random cell
+  return {
+    r: Math.floor(Math.random() * ROWS),
+    c: Math.floor(Math.random() * COLS),
+    quadrant: targetQuad,
+  };
+}
+
+function spawnEvent(state: GameState, now: number) {
+  const neon = state.phi!.neon!;
+  if (neon.rings.filter(r => r.isEvent).length >= 12) {
+    neon.pausedUntil = now + 3500;
+    return;
+  }
+  const pick = pickCellForEvent(state, now);
+  const p = cellCenter(pick.r, pick.c);
+  const color = COLORS[Math.floor(Math.random() * COLORS.length)];
+  const ring: NeonRing = {
+    id: neon.nextRingId++,
+    x: p.x, y: p.y,
+    color,
+    radius: 8,
+    maxRadius: 420,
+    growSpeed: 0.06,
+    spawnedAt: now,
+    hitPlayers: new Set(),
+    consumedBy: new Set(),
+    quadrant: pick.quadrant,
+    isEvent: true,
+  };
+  neon.rings.push(ring);
+}
+
+function scheduleNext(neon: NeonState, now: number) {
+  const isPattern = neon.patternStep % 2 === 0;
+  neon.nextEventAt = now + (isPattern ? 1600 : 2600 + Math.random() * 1400);
+  neon.patternStep++;
+}
+
+function emitPlayerRing(state: GameState, playerId: number, color: NeonColor, x: number, y: number, now: number) {
+  const neon = state.phi!.neon!;
+  const ring: NeonRing = {
+    id: neon.nextRingId++,
+    x, y, color,
+    radius: 6, maxRadius: 260, growSpeed: 0.08,
+    spawnedAt: now,
+    ownerId: playerId,
+    hitPlayers: new Set(),
+    isEvent: false,
+  };
+  neon.rings.push(ring);
+}
+
+function canMove(state: GameState, x: number, y: number, nx: number, ny: number): boolean {
+  const neon = state.phi!.neon!;
+  const cx = Math.floor((nx - ORIGIN_X) / CELL);
+  const cy = Math.floor((ny - ORIGIN_Y) / CELL);
+  if (cx < 0 || cy < 0 || cx >= COLS || cy >= ROWS) return false;
+  const ocx = Math.floor((x - ORIGIN_X) / CELL);
+  const ocy = Math.floor((y - ORIGIN_Y) / CELL);
+  if (cx === ocx && cy === ocy) return true;
+  const cell = neon.maze[ocy]?.[ocx];
+  if (!cell) return true;
+  if (cx > ocx && cell.walls.E) return false;
+  if (cx < ocx && cell.walls.W) return false;
+  if (cy > ocy && cell.walls.S) return false;
+  if (cy < ocy && cell.walls.N) return false;
+  return true;
+}
+
+export function tickNeon(state: GameState, dt: number, keys: Set<string>, now: number, isMobile: boolean) {
+  const neon = state.phi!.neon;
+  if (!neon) return;
+  tickDragon(state, dt);
+
+  if (now >= neon.pausedUntil && now >= neon.nextEventAt) {
+    spawnEvent(state, now);
+    scheduleNext(neon, now);
+  }
+
+  const human = state.players[0];
+  if (human.alive && !human.phiEliminated && !human.phiQualified) {
+    let dx = 0, dy = 0;
+    if (keys.has('w') || keys.has('arrowup')) dy -= 1;
+    if (keys.has('s') || keys.has('arrowdown')) dy += 1;
+    if (keys.has('a') || keys.has('arrowleft')) dx -= 1;
+    if (keys.has('d') || keys.has('arrowright')) dx += 1;
+    if (dx || dy) {
+      const d = Math.sqrt(dx * dx + dy * dy);
+      human.direction = { x: dx / d, y: dy / d };
+    } else if (!isMobile) {
+      human.direction = { x: 0, y: 0 };
+    }
+    for (const k of ['2', '3', '4', '5'] as const) {
+      if (keys.has(k)) {
+        const color = neon.mapping[k];
+        human.neonImmuneColor = color;
+        human.neonImmuneUntil = now + 1400;
+        emitPlayerRing(state, human.id, color, human.x, human.y, now);
+        keys.delete(k);
+      }
+    }
+  }
+
+  for (const p of state.players) {
+    if (p.isHuman || p.phiEliminated || p.phiQualified) continue;
+    const cfg = PERSONALITY[p.botPersonality ?? 'B'];
+    let nearest = Infinity;
+    for (const s of neon.dragon.segments) {
+      const d = Math.hypot(s.x - p.x, s.y - p.y);
+      if (d < nearest) nearest = d;
+    }
+    let flee = { x: 0, y: 0 };
+    if (nearest < 180) {
+      flee.x += (p.x - neon.dragon.segments[0].x);
+      flee.y += (p.y - neon.dragon.segments[0].y);
+    }
+    for (const r of neon.rings) {
+      if (!r.isEvent) continue;
+      const dc = Math.hypot(r.x - p.x, r.y - p.y);
+      if (dc < r.radius + 100 && dc < 260) {
+        if (!(p.neonImmuneColor === r.color && (p.neonImmuneUntil ?? 0) > now)) {
+          if (Math.random() < 0.4 + cfg.riskThreshold) {
+            p.neonImmuneColor = r.color;
+            p.neonImmuneUntil = now + 1400;
+            emitPlayerRing(state, p.id, r.color, p.x, p.y, now);
+          }
+          flee.x += (p.x - r.x) * 0.6;
+          flee.y += (p.y - r.y) * 0.6;
+        }
+      }
+    }
+    if (flee.x === 0 && flee.y === 0) {
+      p.direction.x += (Math.random() - 0.5) * cfg.wanderNoise;
+      p.direction.y += (Math.random() - 0.5) * cfg.wanderNoise;
+      const n = Math.hypot(p.direction.x, p.direction.y) || 1;
+      p.direction.x /= n; p.direction.y /= n;
+    } else {
+      const n = Math.hypot(flee.x, flee.y) || 1;
+      p.direction.x = flee.x / n; p.direction.y = flee.y / n;
+    }
+  }
+
+  const ALIVE = state.players.filter(p => !p.phiEliminated);
+  for (const p of ALIVE) {
+    if (p.phiQualified) continue;
+    const speed = p.speed;
+    const nx = p.x + p.direction.x * speed;
+    const ny = p.y + p.direction.y * speed;
+    if (canMove(state, p.x, p.y, nx, p.y)) p.x = nx;
+    if (canMove(state, p.x, p.y, p.x, ny)) p.y = ny;
+    p.x = Math.max(PLAYER_RADIUS, Math.min(MAP_W - PLAYER_RADIUS, p.x));
+    p.y = Math.max(PLAYER_RADIUS, Math.min(MAP_H - PLAYER_RADIUS, p.y));
+    if (Math.abs(p.direction.x) > 0.1) p.facingX = p.direction.x;
+  }
+  for (let i = 0; i < ALIVE.length; i++) {
+    for (let j = i + 1; j < ALIVE.length; j++) {
+      const a = ALIVE[i], b = ALIVE[j];
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const d = Math.hypot(dx, dy);
+      const min = PLAYER_RADIUS * 2;
+      if (d > 0 && d < min) {
+        const push = (min - d) / 2;
+        a.x -= (dx / d) * push; a.y -= (dy / d) * push;
+        b.x += (dx / d) * push; b.y += (dy / d) * push;
+      }
+    }
+  }
+
+  for (const r of neon.rings) r.radius += r.growSpeed * dt;
+  neon.rings = neon.rings.filter(r => r.radius < r.maxRadius);
+
+  // Per-player ring resolution: earliest contact decides fate.
+  // Correct-color contact consumes the ring (only for that player) and
+  // clears the player's immunity. Wrong-color contact kills. Once a
+  // ring is consumed by that player, further contacts with same ring
+  // are ignored for them.
+  for (const p of ALIVE) {
+    if (p.phiQualified) continue;
+    // Sort rings by absolute distance from player edge
+    const contacts = neon.rings
+      .filter(r => r.isEvent && !(r.consumedBy?.has(p.id)) && !r.hitPlayers.has(p.id))
+      .map(r => ({ r, d: Math.hypot(r.x - p.x, r.y - p.y) }))
+      .filter(({ r, d }) => Math.abs(d - r.radius) < PLAYER_RADIUS + 6)
+      .sort((a, b) => Math.abs(a.d - a.r.radius) - Math.abs(b.d - b.r.radius));
+    if (contacts.length === 0) continue;
+    const first = contacts[0].r;
+    const immuneMatch = p.neonImmuneColor === first.color && (p.neonImmuneUntil ?? 0) > now;
+    if (immuneMatch) {
+      first.consumedBy ??= new Set();
+      first.consumedBy.add(p.id);
+      p.neonImmuneColor = undefined;
+      p.neonImmuneUntil = 0;
+    } else {
+      p.phiEliminated = true;
+      p.alive = false;
+      addCorpse(state, p.x, p.y, 'player', p.facingX ?? 1);
+    }
+    // Mark all other overlapping rings as "seen" so they don't stack-kill same frame.
+    for (let i = 1; i < contacts.length; i++) contacts[i].r.hitPlayers.add(p.id);
+  }
+
+  for (const p of ALIVE) {
+    if (p.phiQualified) continue;
+    for (const s of neon.dragon.segments) {
+      if (Math.hypot(s.x - p.x, s.y - p.y) < 22 + PLAYER_RADIUS - 4) {
+        p.phiEliminated = true; p.alive = false;
+        addCorpse(state, p.x, p.y, 'player', p.facingX ?? 1);
+        break;
+      }
+    }
+  }
+}
+
+// ---- Rendering ----
+function drawMaze(ctx: CanvasRenderingContext2D, neon: NeonState) {
+  ctx.fillStyle = '#020204';
+  ctx.fillRect(0, 0, MAP_W, MAP_H);
+  ctx.strokeStyle = '#00e5ff';
+  ctx.shadowColor = '#00e5ff';
+  ctx.shadowBlur = 10;
+  ctx.lineWidth = WALL_LW;
+  ctx.lineCap = 'round';
+  for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
+    const cell = neon.maze[r][c];
+    const x = ORIGIN_X + c * CELL;
+    const y = ORIGIN_Y + r * CELL;
+    ctx.beginPath();
+    if (cell.walls.N) { ctx.moveTo(x, y); ctx.lineTo(x + CELL, y); }
+    if (cell.walls.W) { ctx.moveTo(x, y); ctx.lineTo(x, y + CELL); }
+    if (r === ROWS - 1 && cell.walls.S) { ctx.moveTo(x, y + CELL); ctx.lineTo(x + CELL, y + CELL); }
+    if (c === COLS - 1 && cell.walls.E) { ctx.moveTo(x + CELL, y); ctx.lineTo(x + CELL, y + CELL); }
+    ctx.stroke();
+  }
+  ctx.shadowBlur = 0;
+  ctx.lineCap = 'butt';
+}
+
+function drawDragonSegment(
+  ctx: CanvasRenderingContext2D, s: { x: number; y: number }, next: { x: number; y: number },
+  index: number, total: number,
+) {
+  const angle = Math.atan2(next.y - s.y, next.x - s.x);
+  const t = 1 - index / total;
+  const rad = 14 + t * 12;
+  ctx.save();
+  ctx.translate(s.x, s.y);
+  ctx.rotate(angle);
+  // Ember trail (behind segment)
+  const glow = ctx.createRadialGradient(0, 0, rad * 0.4, 0, 0, rad * 2.2);
+  glow.addColorStop(0, 'rgba(255,50,50,0.55)');
+  glow.addColorStop(1, 'rgba(255,20,20,0)');
+  ctx.fillStyle = glow;
+  ctx.beginPath(); ctx.arc(0, 0, rad * 2.2, 0, Math.PI * 2); ctx.fill();
+  // Armor body (grey metallic)
+  const body = ctx.createLinearGradient(0, -rad, 0, rad);
+  body.addColorStop(0, '#54595f');
+  body.addColorStop(0.5, '#2b2f33');
+  body.addColorStop(1, '#111214');
+  ctx.fillStyle = body;
+  ctx.beginPath(); ctx.arc(0, 0, rad, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = '#0a0a0b';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  // Red chevron mark
+  ctx.strokeStyle = '#ff2233';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(-rad * 0.55, -rad * 0.4);
+  ctx.lineTo(-rad * 0.15, 0);
+  ctx.lineTo(-rad * 0.55, rad * 0.4);
+  ctx.stroke();
+  // Spikes (top + bottom)
+  ctx.fillStyle = '#1a1c1f';
+  ctx.beginPath();
+  ctx.moveTo(-rad * 0.6, -rad); ctx.lineTo(0, -rad * 1.6); ctx.lineTo(rad * 0.6, -rad);
+  ctx.closePath(); ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(-rad * 0.6, rad); ctx.lineTo(0, rad * 1.6); ctx.lineTo(rad * 0.6, rad);
+  ctx.closePath(); ctx.fill();
+  ctx.restore();
+}
+
+function drawDragonHead(ctx: CanvasRenderingContext2D, s: { x: number; y: number }, angle: number) {
+  ctx.save();
+  ctx.translate(s.x, s.y);
+  ctx.rotate(angle);
+  // Fiery aura
+  const glow = ctx.createRadialGradient(0, 0, 8, 0, 0, 56);
+  glow.addColorStop(0, 'rgba(255,80,60,0.75)');
+  glow.addColorStop(1, 'rgba(255,20,20,0)');
+  ctx.fillStyle = glow;
+  ctx.beginPath(); ctx.arc(0, 0, 56, 0, Math.PI * 2); ctx.fill();
+  // Skull silhouette
+  ctx.fillStyle = '#1a1c1f';
+  ctx.beginPath();
+  ctx.moveTo(26, 0);
+  ctx.lineTo(6, -18);
+  ctx.lineTo(-18, -14);
+  ctx.lineTo(-20, 14);
+  ctx.lineTo(6, 18);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = '#0a0a0b'; ctx.lineWidth = 2; ctx.stroke();
+  // Front spikes
+  ctx.fillStyle = '#0e1013';
+  for (const [ox, oy] of [[26, 0], [18, -12], [18, 12]]) {
+    ctx.beginPath();
+    ctx.moveTo(ox, oy);
+    ctx.lineTo(ox + 14, oy);
+    ctx.lineTo(ox, oy - 4);
+    ctx.closePath();
+    ctx.fill();
+  }
+  // Red eyes
+  ctx.fillStyle = '#ff1a2b';
+  ctx.shadowColor = '#ff2233'; ctx.shadowBlur = 12;
+  ctx.beginPath(); ctx.ellipse(2, -7, 5, 2.4, -0.3, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(2, 7, 5, 2.4, 0.3, 0, Math.PI * 2); ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.restore();
+}
+
+function drawDragon(ctx: CanvasRenderingContext2D, d: NeonDragon) {
+  for (let i = d.segments.length - 1; i > 0; i--) {
+    drawDragonSegment(ctx, d.segments[i], d.segments[i - 1], i, d.segments.length);
+  }
+  const head = d.segments[0];
+  const next = d.segments[1] ?? head;
+  const angle = Math.atan2(head.y - next.y, head.x - next.x);
+  drawDragonHead(ctx, head, angle);
+}
+
+function drawRings(ctx: CanvasRenderingContext2D, neon: NeonState) {
+  ctx.globalCompositeOperation = 'lighter';
+  for (const r of neon.rings) {
+    ctx.strokeStyle = COLOR_HEX[r.color];
+    ctx.lineWidth = r.isEvent ? 7 : 3;
+    ctx.globalAlpha = Math.max(0.2, 1 - r.radius / r.maxRadius);
+    ctx.beginPath();
+    ctx.arc(r.x, r.y, r.radius, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.globalAlpha *= 0.5;
+    ctx.lineWidth = r.isEvent ? 16 : 8;
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+  ctx.globalCompositeOperation = 'source-over';
+}
+
+/** Vision mask: darken everything except a soft circle around the human. */
+function applyVisionMask(ctx: CanvasRenderingContext2D, cx: number, cy: number, w: number, h: number) {
+  ctx.save();
+  ctx.globalCompositeOperation = 'destination-in';
+  const g = ctx.createRadialGradient(cx, cy, VISION_RADIUS * 0.55, cx, cy, VISION_RADIUS);
+  g.addColorStop(0, 'rgba(255,255,255,1)');
+  g.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, w, h);
+  ctx.restore();
+}
+
+export function renderNeon(ctx: CanvasRenderingContext2D, state: GameState, canvasW: number, canvasH: number) {
+  const neon = state.phi!.neon;
+  if (!neon) return;
+  const human = state.players[0];
+  const camX = Math.max(0, Math.min(MAP_W - canvasW, human.x - canvasW / 2));
+  const camY = Math.max(0, Math.min(MAP_H - canvasH, human.y - canvasH / 2));
+
+  ctx.save();
+  ctx.clearRect(0, 0, canvasW, canvasH);
+  // Dark base
+  ctx.fillStyle = '#010104';
+  ctx.fillRect(0, 0, canvasW, canvasH);
+
+  // --- Off-screen layer for fog-of-war content (maze, dragon, players, teammates) ---
+  const off = document.createElement('canvas');
+  off.width = canvasW; off.height = canvasH;
+  const octx = off.getContext('2d')!;
+  octx.translate(-camX, -camY);
+  drawMaze(octx, neon);
+  drawDragon(octx, neon.dragon);
+  for (const p of state.players) {
+    if (p.phiEliminated) continue;
+    drawRobot(octx, {
+      x: p.x, y: p.y,
+      dirX: p.direction.x, dirY: p.direction.y,
+      moving: Math.abs(p.direction.x) + Math.abs(p.direction.y) > 0.15,
+      keyId: `neon-${p.id}`,
+      label: p.name,
+    });
+  }
+  renderCorpses(octx, state, performance.now());
+  renderSpawnFx(octx, state, performance.now());
+  // Apply vision mask on the offscreen canvas
+  const hx = human.x - camX, hy = human.y - camY;
+  applyVisionMask(octx, hx, hy, canvasW, canvasH);
+  // Blit masked content
+  ctx.drawImage(off, 0, 0);
+
+  // --- Rings always visible on top ---
+  ctx.save();
+  ctx.translate(-camX, -camY);
+  drawRings(ctx, neon);
+  ctx.restore();
+
+  // Vision-edge vignette
+  const vg = ctx.createRadialGradient(hx, hy, VISION_RADIUS * 0.5, hx, hy, VISION_RADIUS * 1.4);
+  vg.addColorStop(0, 'rgba(0,0,0,0)');
+  vg.addColorStop(1, 'rgba(0,0,0,0.85)');
+  ctx.fillStyle = vg;
+  ctx.fillRect(0, 0, canvasW, canvasH);
+
+  ctx.restore();
+}
