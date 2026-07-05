@@ -485,8 +485,8 @@ export function tickMalteron(
   }
   if (!phi.malteronSpawned) {
     phi.malteronSpawned = true;
-    if (active.length === 0) return;
     const active = state.players.filter(p => !p.phiEliminated);
+    if (active.length === 0) return;
     // Survivor mode: only 1 human alive; still spawn a meaningful swarm.
     const spawnCount = phi.survivorMode ? Math.max(6, active.length) : active.length;
     for (let i = 0; i < spawnCount; i++) spawnMalteron(state);
@@ -578,6 +578,7 @@ export function tickMalteron(
 
   // Maintain malteron count = active players (or survivor swarm minimum)
   const activeCount = state.players.filter(p => !p.phiEliminated).length;
+  if (activeCount === 0) return;
   const target = phi.survivorMode ? Math.max(6, activeCount) : activeCount;
   const liveMalterons = (phi.malterons ?? []).filter(m => m.alive).length;
   if (liveMalterons < target && phi.malteronSpawned) {
