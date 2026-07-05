@@ -403,6 +403,11 @@ export default function GameCanvas({ gameState, setGameState, onExit }: Props) {
   } else if (isPhi && phiFloor === 'mars') {
     actionLabel = 'TASK';
     canAction = getNearbyTask(gameState) !== null;
+  } else if (gameState.mode === 'football') {
+    // Kicking is automatic on ball contact; button is a visual affordance
+    // and (if available) uses a Power-Shot charge for the next hit.
+    actionLabel = 'KICK';
+    canAction = human.alive;
   } else {
     const hAb = human.ability;
     if (hAb === 'kill' || hAb === 'shooter') {
