@@ -97,6 +97,8 @@ function initFloor(state: GameState) {
   const phi = state.phi!;
   const floor = currentFloor(state);
   phi.floorDurationMs = FLOOR_DURATION[floor];
+  // Survivor Mars: strict 20-second window to complete 3 out of 5 tasks.
+  if (phi.survivorMode && floor === 'mars') phi.floorDurationMs = 20_000;
   phi.floorStartedAt = performance.now();
   phi.floorPhase = 'active';
   phi.banner = { text: FLOOR_NAMES[floor], until: performance.now() + 2500 };
@@ -113,6 +115,7 @@ function initFloor(state: GameState) {
     p.phiBullets = 3;
     p.phiReloadUntil = 0;
     p.phiCrewId = undefined;
+    p.phiProtectedUntil = 0;
   }
   // Wipe floor-specific state
   phi.electrons = undefined;
@@ -260,6 +263,11 @@ export function updatePhi(
             const crew = phi.crew?.find(c => c.id === p.phiCrewId);
             if (crew && crew.alive) p.phiQualified = true;
             else { p.phiEliminated = true; p.alive = false; }
+          }
+          else if (floor === 'mars' && phi.survivorMode) {
+            // Survivor Mars: fail if fewer than 3 tasks completed in time.
+            if ((p.phiTasks ?? 0) < 3) { p.phiEliminated = true; p.alive = false; }
+            else p.phiQualified = true;
           }
         }
       }

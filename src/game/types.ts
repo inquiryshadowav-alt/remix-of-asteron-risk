@@ -345,6 +345,8 @@ export interface Player {
   phiSpawnAt?: number;         // Malteron/enemy safe-spawn timestamp
   neonImmuneColor?: 'GREEN' | 'WHITE' | 'BLUE' | 'RED';
   neonImmuneUntil?: number;
+  /** Brief grace after a successful frequency save; wrong rings ignored. */
+  phiProtectedUntil?: number;
 }
 
 export interface Platform {

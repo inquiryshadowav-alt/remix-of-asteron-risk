@@ -14,6 +14,7 @@ import PhiHUD from './PhiHUD';
 import DeathModal from './DeathModal';
 import { preloadGameAssets } from '@/game/preload';
 import { startGamepadBridge, stopGamepadBridge } from '@/game/gamepad';
+import dragonAudio from '@/assets/dragon-chase.mp3.asset.json';
 
 interface Props {
   gameState: GameState;
@@ -54,6 +55,19 @@ export default function GameCanvas({ gameState, setGameState, onExit }: Props) {
     startGamepadBridge();
     return () => stopGamepadBridge();
   }, []);
+
+  // Dragon Chase looping audio — active only on Neon floor. Volume scales
+  // with distance from player to nearest dragon segment.
+  const dragonAudioRef = useRef<HTMLAudioElement | null>(null);
+  useEffect(() => {
+    const a = new Audio(dragonAudio.url);
+    a.loop = true;
+    a.volume = 0;
+    a.preload = 'auto';
+    dragonAudioRef.current = a;
+    return () => { a.pause(); a.src = ''; dragonAudioRef.current = null; };
+  }, []);
+
 
 
   // On mobile, request fullscreen on the first user interaction (browsers
@@ -231,6 +245,41 @@ export default function GameCanvas({ gameState, setGameState, onExit }: Props) {
         }
       }
 
+      // Dragon Chase audio — active only on Neon floor.
+      const audio = dragonAudioRef.current;
+      if (audio) {
+        const s = stateRef.current;
+        const phi = s.phi;
+        const onNeon = s.mode === 'phi' && phi
+          && phi.floorSequence[phi.currentFloorIdx] === 'neon'
+          && phi.floorPhase === 'active'
+          && phi.neon;
+        if (onNeon) {
+          const h = s.players[0];
+          const segs = phi.neon!.dragon.segments;
+          let nearest = Infinity;
+          for (const seg of segs) {
+            const d = Math.hypot(seg.x - h.x, seg.y - h.y);
+            if (d < nearest) nearest = d;
+          }
+          // Distance-to-volume: <=180 -> 0.7, ~450 -> 0.10, >=900 -> 0
+          let vol = 0;
+          if (nearest <= 180) vol = 0.7;
+          else if (nearest <= 450) {
+            const t = (450 - nearest) / (450 - 180);
+            vol = 0.10 + t * (0.7 - 0.10);
+          } else if (nearest <= 900) {
+            const t = (900 - nearest) / (900 - 450);
+            vol = t * 0.10;
+          }
+          audio.volume = Math.max(0, Math.min(1, vol));
+          if (audio.paused) audio.play().catch(() => {});
+        } else if (!audio.paused) {
+          audio.pause();
+          audio.currentTime = 0;
+        }
+      }
+
       animRef.current = requestAnimationFrame(loop);
     };
 
@@ -354,6 +403,11 @@ export default function GameCanvas({ gameState, setGameState, onExit }: Props) {
   } else if (isPhi && phiFloor === 'mars') {
     actionLabel = 'TASK';
     canAction = getNearbyTask(gameState) !== null;
+  } else if (gameState.mode === 'football') {
+    // Kicking is automatic on ball contact; button is a visual affordance
+    // and (if available) uses a Power-Shot charge for the next hit.
+    actionLabel = 'KICK';
+    canAction = human.alive;
   } else {
     const hAb = human.ability;
     if (hAb === 'kill' || hAb === 'shooter') {
