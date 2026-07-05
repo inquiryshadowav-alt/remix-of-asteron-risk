@@ -120,14 +120,16 @@ export default function PhiHUD({ state }: Props) {
             className="px-3 py-1.5 rounded-lg border font-mono text-[clamp(10px,1.2vw,13px)] shadow-lg"
             style={badgeStyle}
           >
-            QUALIFICATION {marsProgress}/3
+            {isSurvivor ? `TASKS ${marsProgress}/3` : `QUALIFICATION ${marsProgress}/3`}
           </div>
-          <div
-            className="px-2 py-1 rounded font-mono text-[10px]"
-            style={{ background: 'rgba(0,0,0,0.6)', color: theme.accent }}
-          >
-            Tasks left: {totalRemaining}
-          </div>
+          {!isSurvivor && (
+            <div
+              className="px-2 py-1 rounded font-mono text-[10px]"
+              style={{ background: 'rgba(0,0,0,0.6)', color: theme.accent }}
+            >
+              Tasks left: {totalRemaining}
+            </div>
+          )}
         </div>
       )}
 
