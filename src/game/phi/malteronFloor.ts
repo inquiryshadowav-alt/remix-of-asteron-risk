@@ -485,7 +485,9 @@ export function tickMalteron(
   if (!phi.malteronSpawned) {
     phi.malteronSpawned = true;
     const active = state.players.filter(p => !p.phiEliminated);
-    for (let i = 0; i < active.length; i++) spawnMalteron(state);
+    // Survivor mode: only 1 human alive; still spawn a meaningful swarm.
+    const spawnCount = phi.survivorMode ? Math.max(6, active.length) : active.length;
+    for (let i = 0; i < spawnCount; i++) spawnMalteron(state);
     phi.banner = { text: 'MALTERON APOCALYPSE!', until: now + 1500 };
   }
 
