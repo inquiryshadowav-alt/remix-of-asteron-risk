@@ -1,5 +1,7 @@
 import { GameState } from '@/game/types';
 import { FLOOR_THEME } from '@/game/phi/theme';
+import NeonHeatMeter from '@/components/NeonHeatMeter';
+
 
 interface Props { state: GameState }
 
@@ -112,6 +114,13 @@ export default function PhiHUD({ state }: Props) {
           </div>
         )}
       </div>
+
+      {/* LEFT: Neon Overload system heat meter */}
+      {floor === 'neon' && !human.phiEliminated && (
+        <NeonHeatMeter heat={human.phiHeat ?? 0} />
+      )}
+
+
 
       {/* TOP RIGHT: Mars task progress (no overlap) */}
       {floor === 'mars' && !human.phiEliminated && (

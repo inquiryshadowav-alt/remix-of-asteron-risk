@@ -126,6 +126,9 @@ export function initNeonFloor(state: GameState) {
     p.direction = { x: 0, y: 0 };
     p.neonImmuneColor = undefined;
     p.neonImmuneUntil = 0;
+    p.phiHeat = 0;
+    p.phiLastEmitAt = undefined;
+
   });
 }
 
@@ -255,21 +258,51 @@ function emitPlayerRing(state: GameState, playerId: number, color: NeonColor, x:
   neon.rings.push(ring);
 }
 
+/** Body margin used against maze walls so players cannot overlap/climb them. */
+const WALL_MARGIN = PLAYER_RADIUS * 0.85 + WALL_LW / 2;
+
+function cellOf(x: number, y: number) {
+  return { c: Math.floor((x - ORIGIN_X) / CELL), r: Math.floor((y - ORIGIN_Y) / CELL) };
+}
+
+/**
+ * Axis-aligned movement check. Probes the leading edge of the body (not just
+ * the center) so a player can never sink into or climb over a maze wall.
+ */
 function canMove(state: GameState, x: number, y: number, nx: number, ny: number): boolean {
   const neon = state.phi!.neon!;
-  const cx = Math.floor((nx - ORIGIN_X) / CELL);
-  const cy = Math.floor((ny - ORIGIN_Y) / CELL);
-  if (cx < 0 || cy < 0 || cx >= COLS || cy >= ROWS) return false;
-  const ocx = Math.floor((x - ORIGIN_X) / CELL);
-  const ocy = Math.floor((y - ORIGIN_Y) / CELL);
-  if (cx === ocx && cy === ocy) return true;
-  const cell = neon.maze[ocy]?.[ocx];
+  const movingX = nx !== x;
+  const probeX = movingX ? nx + Math.sign(nx - x) * WALL_MARGIN : nx;
+  const probeY = !movingX ? ny + Math.sign(ny - y) * WALL_MARGIN : ny;
+  if (
+    probeX < ORIGIN_X || probeY < ORIGIN_Y ||
+    probeX > ORIGIN_X + COLS * CELL || probeY > ORIGIN_Y + ROWS * CELL
+  ) return false;
+
+  const from = cellOf(x, y);
+  const to = cellOf(probeX, probeY);
+  if (to.c < 0 || to.r < 0 || to.c >= COLS || to.r >= ROWS) return false;
+  if (to.c === from.c && to.r === from.r) return true;
+  const cell = neon.maze[from.r]?.[from.c];
   if (!cell) return true;
-  if (cx > ocx && cell.walls.E) return false;
-  if (cx < ocx && cell.walls.W) return false;
-  if (cy > ocy && cell.walls.S) return false;
-  if (cy < ocy && cell.walls.N) return false;
+  if (to.c > from.c && cell.walls.E) return false;
+  if (to.c < from.c && cell.walls.W) return false;
+  if (to.r > from.r && cell.walls.S) return false;
+  if (to.r < from.r && cell.walls.N) return false;
   return true;
+}
+
+/** Heat added per frequency emit, and passive cooling rate (per ms). */
+const HEAT_PER_EMIT = 0.3;
+export const HEAT_COOL_PER_MS = 0.16 / 1000;
+export const HEAT_WARN = 0.75;
+
+function addHeat(p: { phiHeat?: number; phiLastEmitAt?: number }, now: number) {
+  // Rapid consecutive taps stack harder than spaced-out, deliberate ones.
+  const since = now - (p.phiLastEmitAt ?? -Infinity);
+  const burst = since < 600 ? 1.5 : since < 1200 ? 1.1 : 0.8;
+  p.phiHeat = Math.min(1.2, (p.phiHeat ?? 0) + HEAT_PER_EMIT * burst);
+  p.phiLastEmitAt = now;
 }
 
 export function tickNeon(state: GameState, dt: number, keys: Set<string>, now: number, isMobile: boolean) {
@@ -301,6 +334,7 @@ export function tickNeon(state: GameState, dt: number, keys: Set<string>, now: n
         human.neonImmuneColor = color;
         human.neonImmuneUntil = now + 1400;
         emitPlayerRing(state, human.id, color, human.x, human.y, now);
+        addHeat(human, now);
         keys.delete(k);
       }
     }
@@ -324,10 +358,13 @@ export function tickNeon(state: GameState, dt: number, keys: Set<string>, now: n
       const dc = Math.hypot(r.x - p.x, r.y - p.y);
       if (dc < r.radius + 100 && dc < 260) {
         if (!(p.neonImmuneColor === r.color && (p.neonImmuneUntil ?? 0) > now)) {
-          if (Math.random() < 0.4 + cfg.riskThreshold) {
+          // Bots respect the overheat rule: they hold fire when hot.
+          const hot = (p.phiHeat ?? 0) > 0.62;
+          if (!hot && Math.random() < 0.4 + cfg.riskThreshold) {
             p.neonImmuneColor = r.color;
             p.neonImmuneUntil = now + 1400;
             emitPlayerRing(state, p.id, r.color, p.x, p.y, now);
+            addHeat(p, now);
           }
           flee.x += (p.x - r.x) * 0.6;
           flee.y += (p.y - r.y) * 0.6;
@@ -344,6 +381,22 @@ export function tickNeon(state: GameState, dt: number, keys: Set<string>, now: n
       p.direction.x = flee.x / n; p.direction.y = flee.y / n;
     }
   }
+
+  // --- System heat: cool down, and kill anyone who pushes past the red. ---
+  for (const p of state.players) {
+    if (p.phiEliminated) continue;
+    const heat = p.phiHeat ?? 0;
+    if (heat > 0) {
+      p.phiHeat = Math.max(0, heat - HEAT_COOL_PER_MS * dt);
+    }
+    if ((p.phiHeat ?? 0) >= 1) {
+      p.phiHeat = 1;
+      p.phiEliminated = true;
+      p.alive = false;
+      addCorpse(state, p.x, p.y, 'player', p.facingX ?? 1);
+    }
+  }
+
 
   const ALIVE = state.players.filter(p => !p.phiEliminated);
   for (const p of ALIVE) {
@@ -632,6 +685,7 @@ export function renderNeon(ctx: CanvasRenderingContext2D, state: GameState, canv
   const off = document.createElement('canvas');
   off.width = canvasW; off.height = canvasH;
   const octx = off.getContext('2d')!;
+  octx.save();
   octx.translate(-camX, -camY);
   drawMaze(octx, neon);
   drawDragon(octx, neon.dragon);
@@ -647,9 +701,11 @@ export function renderNeon(ctx: CanvasRenderingContext2D, state: GameState, canv
   }
   renderCorpses(octx, state, performance.now());
   renderSpawnFx(octx, state, performance.now());
-  // Apply vision mask on the offscreen canvas
+  octx.restore();
+  // Apply vision mask in SCREEN space, centred on the human.
   const hx = human.x - camX, hy = human.y - camY;
   applyVisionMask(octx, hx, hy, canvasW, canvasH);
+
   // Blit masked content
   ctx.drawImage(off, 0, 0);
 

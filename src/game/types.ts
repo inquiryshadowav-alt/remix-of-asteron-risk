@@ -349,7 +349,12 @@ export interface Player {
   neonImmuneUntil?: number;
   /** Brief grace after a successful frequency save; wrong rings ignored. */
   phiProtectedUntil?: number;
+  /** Neon Overload: system heat 0..1 from spamming frequency keys. */
+  phiHeat?: number;
+  /** Timestamp of last frequency emit (heat build-up). */
+  phiLastEmitAt?: number;
 }
+
 
 export interface Platform {
   id: number;

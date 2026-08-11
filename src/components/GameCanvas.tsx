@@ -202,9 +202,12 @@ export default function GameCanvas({ gameState, setGameState, onExit }: Props) {
       // Apply mobile joystick direction
       const human = stateRef.current.players[0];
       const isPhiMode = stateRef.current.mode === 'phi';
-      if (isMobile && human.alive && (isPhiMode ? !human.phiEliminated && !human.phiQualified : !human.doingTask)) {
+      if (isMobile && human.alive && (isPhiMode ? !human.phiEliminated && !human.doingTask : !human.doingTask)) {
         human.direction = { ...mobileDir.current };
+      } else if (isMobile && (human.doingTask || human.phiEliminated)) {
+        human.direction = { x: 0, y: 0 };
       }
+
 
       if (stateRef.current.phase === 'playing') {
         const isPhi = stateRef.current.mode === 'phi';
