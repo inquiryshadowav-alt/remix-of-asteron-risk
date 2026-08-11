@@ -259,38 +259,52 @@ function emitPlayerRing(state: GameState, playerId: number, color: NeonColor, x:
 }
 
 /** Body margin used against maze walls so players cannot overlap/climb them. */
-const WALL_MARGIN = PLAYER_RADIUS * 0.85 + WALL_LW / 2;
+const WALL_MARGIN = PLAYER_RADIUS + WALL_LW / 2;
 
 function cellOf(x: number, y: number) {
   return { c: Math.floor((x - ORIGIN_X) / CELL), r: Math.floor((y - ORIGIN_Y) / CELL) };
 }
 
 /**
- * Axis-aligned movement check. Probes the leading edge of the body (not just
- * the center) so a player can never sink into or climb over a maze wall.
+ * Push a position out of any wall of the cell it currently occupies.
+ * Runs a couple of iterations so corners resolve cleanly.
  */
-function canMove(state: GameState, x: number, y: number, nx: number, ny: number): boolean {
+function clampToMaze(state: GameState, x: number, y: number): { x: number; y: number } {
   const neon = state.phi!.neon!;
-  const movingX = nx !== x;
-  const probeX = movingX ? nx + Math.sign(nx - x) * WALL_MARGIN : nx;
-  const probeY = !movingX ? ny + Math.sign(ny - y) * WALL_MARGIN : ny;
-  if (
-    probeX < ORIGIN_X || probeY < ORIGIN_Y ||
-    probeX > ORIGIN_X + COLS * CELL || probeY > ORIGIN_Y + ROWS * CELL
-  ) return false;
-
-  const from = cellOf(x, y);
-  const to = cellOf(probeX, probeY);
-  if (to.c < 0 || to.r < 0 || to.c >= COLS || to.r >= ROWS) return false;
-  if (to.c === from.c && to.r === from.r) return true;
-  const cell = neon.maze[from.r]?.[from.c];
-  if (!cell) return true;
-  if (to.c > from.c && cell.walls.E) return false;
-  if (to.c < from.c && cell.walls.W) return false;
-  if (to.r > from.r && cell.walls.S) return false;
-  if (to.r < from.r && cell.walls.N) return false;
-  return true;
+  const minX = ORIGIN_X + WALL_MARGIN, maxX = ORIGIN_X + COLS * CELL - WALL_MARGIN;
+  const minY = ORIGIN_Y + WALL_MARGIN, maxY = ORIGIN_Y + ROWS * CELL - WALL_MARGIN;
+  x = Math.max(minX, Math.min(maxX, x));
+  y = Math.max(minY, Math.min(maxY, y));
+  for (let i = 0; i < 2; i++) {
+    const { r, c } = cellOf(x, y);
+    const cell = neon.maze[Math.max(0, Math.min(ROWS - 1, r))]?.[Math.max(0, Math.min(COLS - 1, c))];
+    if (!cell) break;
+    const left = ORIGIN_X + cell.c * CELL;
+    const top = ORIGIN_Y + cell.r * CELL;
+    if (cell.walls.W) x = Math.max(x, left + WALL_MARGIN);
+    if (cell.walls.E) x = Math.min(x, left + CELL - WALL_MARGIN);
+    if (cell.walls.N) y = Math.max(y, top + WALL_MARGIN);
+    if (cell.walls.S) y = Math.min(y, top + CELL - WALL_MARGIN);
+  }
+  return { x, y };
 }
+
+/** Move with sub-steps so fast movement can never tunnel through a wall. */
+function moveWithWalls(state: GameState, x: number, y: number, dx: number, dy: number) {
+  const dist = Math.hypot(dx, dy);
+  const steps = Math.max(1, Math.ceil(dist / (WALL_MARGIN * 0.5)));
+  const sx = dx / steps, sy = dy / steps;
+  for (let i = 0; i < steps; i++) {
+    let nx = x + sx;
+    let c1 = clampToMaze(state, nx, y);
+    x = c1.x; y = c1.y;
+    let ny = y + sy;
+    let c2 = clampToMaze(state, x, ny);
+    x = c2.x; y = c2.y;
+  }
+  return { x, y };
+}
+
 
 /** Heat added per frequency emit, and passive cooling rate (per ms). */
 const HEAT_PER_EMIT = 0.3;
