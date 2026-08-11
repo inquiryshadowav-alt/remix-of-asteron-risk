@@ -1,5 +1,7 @@
 import { GameState } from '@/game/types';
 import { FLOOR_THEME } from '@/game/phi/theme';
+import NeonHeatMeter from '@/components/NeonHeatMeter';
+
 
 interface Props { state: GameState }
 
