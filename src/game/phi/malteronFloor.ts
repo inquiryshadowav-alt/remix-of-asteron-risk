@@ -555,6 +555,9 @@ export function tickMalteron(
 
   // Bullet physics + collisions
   tickBullets(state, dt, now, (b) => {
+    // Bullets travel only inside the pipes; they cannot cut across rock or
+    // jump into a cave that isn't connected to the one they were fired in.
+    if (!pointOnPipe(rt, b.x, b.y)) return true;
     for (const m of phi.malterons ?? []) {
       if (!m.alive) continue;
       if (Math.hypot(m.x - b.x, m.y - b.y) < 26) {
