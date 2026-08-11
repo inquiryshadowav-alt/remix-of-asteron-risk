@@ -10,11 +10,11 @@ const ELECTRON_SIZE = 22;
 
 // Inner shells faster (survival priority for cautious bots).
 const ORBITS = {
-  s5: { r: 620, count: 12, speed:  0.00030 },
-  s4: { r: 500, count: 10, speed: -0.00048 },
-  s3: { r: 380, count:  8, speed:  0.00120 },
-  s2: { r: 250, count:  5, speed: -0.00280 },
-  s1: { r: 140, count:  2, speed:  0.00612 },
+  s5: { r: 620, count: 12, speed:  0.00016 },
+  s4: { r: 500, count: 10, speed: -0.00024 },
+  s3: { r: 380, count:  8, speed:  0.00055 },
+  s2: { r: 250, count:  5, speed: -0.00110 },
+  s1: { r: 140, count:  2, speed:  0.00230 },
 } as const;
 
 type OrbitKey = keyof typeof ORBITS;

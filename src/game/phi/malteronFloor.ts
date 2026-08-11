@@ -158,6 +158,22 @@ function findBlock(rt: MalteronRuntime, row: number, col: number): Block | undef
   return rt.blocks.find(b => b.row === row && b.col === col);
 }
 
+/** True when a world point lies inside some block's walkable pipe. */
+function pointOnPipe(rt: MalteronRuntime, x: number, y: number): boolean {
+  for (const b of rt.blocks) {
+    const o = blockWorldOrigin(b);
+    const lx = x - o.x, ly = y - o.y;
+    if (lx < 0 || ly < 0 || lx > BLOCK_SIZE || ly > BLOCK_SIZE) continue;
+    const SAMPLES = 28;
+    for (let i = 0; i <= SAMPLES; i++) {
+      const p = pathPoint(b.pathType, i / SAMPLES);
+      if (Math.hypot(p.x - lx, p.y - ly) <= PATH_HALF_WIDTH) return true;
+    }
+  }
+  return false;
+}
+
+
 // ---------- Init ----------
 
 const RANDOM_PATHS: PathType[] = ['NS', 'EW', 'NE', 'NW', 'SE', 'SW'];
@@ -555,6 +571,9 @@ export function tickMalteron(
 
   // Bullet physics + collisions
   tickBullets(state, dt, now, (b) => {
+    // Bullets travel only inside the pipes; they cannot cut across rock or
+    // jump into a cave that isn't connected to the one they were fired in.
+    if (!pointOnPipe(rt, b.x, b.y)) return true;
     for (const m of phi.malterons ?? []) {
       if (!m.alive) continue;
       if (Math.hypot(m.x - b.x, m.y - b.y) < 26) {
