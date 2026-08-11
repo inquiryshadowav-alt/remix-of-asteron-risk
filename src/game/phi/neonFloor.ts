@@ -685,6 +685,7 @@ export function renderNeon(ctx: CanvasRenderingContext2D, state: GameState, canv
   const off = document.createElement('canvas');
   off.width = canvasW; off.height = canvasH;
   const octx = off.getContext('2d')!;
+  octx.save();
   octx.translate(-camX, -camY);
   drawMaze(octx, neon);
   drawDragon(octx, neon.dragon);
@@ -700,9 +701,11 @@ export function renderNeon(ctx: CanvasRenderingContext2D, state: GameState, canv
   }
   renderCorpses(octx, state, performance.now());
   renderSpawnFx(octx, state, performance.now());
-  // Apply vision mask on the offscreen canvas
+  octx.restore();
+  // Apply vision mask in SCREEN space, centred on the human.
   const hx = human.x - camX, hy = human.y - camY;
   applyVisionMask(octx, hx, hy, canvasW, canvasH);
+
   // Blit masked content
   ctx.drawImage(off, 0, 0);
 
