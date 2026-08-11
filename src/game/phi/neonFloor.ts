@@ -255,22 +255,40 @@ function emitPlayerRing(state: GameState, playerId: number, color: NeonColor, x:
   neon.rings.push(ring);
 }
 
+/** Body margin used against maze walls so players cannot overlap/climb them. */
+const WALL_MARGIN = PLAYER_RADIUS * 0.85 + WALL_LW / 2;
+
+function cellOf(x: number, y: number) {
+  return { c: Math.floor((x - ORIGIN_X) / CELL), r: Math.floor((y - ORIGIN_Y) / CELL) };
+}
+
+/**
+ * Axis-aligned movement check. Probes the leading edge of the body (not just
+ * the center) so a player can never sink into or climb over a maze wall.
+ */
 function canMove(state: GameState, x: number, y: number, nx: number, ny: number): boolean {
   const neon = state.phi!.neon!;
-  const cx = Math.floor((nx - ORIGIN_X) / CELL);
-  const cy = Math.floor((ny - ORIGIN_Y) / CELL);
-  if (cx < 0 || cy < 0 || cx >= COLS || cy >= ROWS) return false;
-  const ocx = Math.floor((x - ORIGIN_X) / CELL);
-  const ocy = Math.floor((y - ORIGIN_Y) / CELL);
-  if (cx === ocx && cy === ocy) return true;
-  const cell = neon.maze[ocy]?.[ocx];
+  const movingX = nx !== x;
+  const probeX = movingX ? nx + Math.sign(nx - x) * WALL_MARGIN : nx;
+  const probeY = !movingX ? ny + Math.sign(ny - y) * WALL_MARGIN : ny;
+  if (
+    probeX < ORIGIN_X || probeY < ORIGIN_Y ||
+    probeX > ORIGIN_X + COLS * CELL || probeY > ORIGIN_Y + ROWS * CELL
+  ) return false;
+
+  const from = cellOf(x, y);
+  const to = cellOf(probeX, probeY);
+  if (to.c < 0 || to.r < 0 || to.c >= COLS || to.r >= ROWS) return false;
+  if (to.c === from.c && to.r === from.r) return true;
+  const cell = neon.maze[from.r]?.[from.c];
   if (!cell) return true;
-  if (cx > ocx && cell.walls.E) return false;
-  if (cx < ocx && cell.walls.W) return false;
-  if (cy > ocy && cell.walls.S) return false;
-  if (cy < ocy && cell.walls.N) return false;
+  if (to.c > from.c && cell.walls.E) return false;
+  if (to.c < from.c && cell.walls.W) return false;
+  if (to.r > from.r && cell.walls.S) return false;
+  if (to.r < from.r && cell.walls.N) return false;
   return true;
 }
+
 
 export function tickNeon(state: GameState, dt: number, keys: Set<string>, now: number, isMobile: boolean) {
   const neon = state.phi!.neon;
