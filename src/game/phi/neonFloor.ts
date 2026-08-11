@@ -126,6 +126,9 @@ export function initNeonFloor(state: GameState) {
     p.direction = { x: 0, y: 0 };
     p.neonImmuneColor = undefined;
     p.neonImmuneUntil = 0;
+    p.phiHeat = 0;
+    p.phiLastEmitAt = undefined;
+
   });
 }
 
