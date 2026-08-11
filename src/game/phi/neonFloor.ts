@@ -434,6 +434,12 @@ export function tickNeon(state: GameState, dt: number, keys: Set<string>, now: n
       }
     }
   }
+  // Separation must never shove anyone inside a wall.
+  for (const p of ALIVE) {
+    if (p.phiQualified) continue;
+    const fixed = clampToMaze(state, p.x, p.y);
+    p.x = fixed.x; p.y = fixed.y;
+  }
 
   for (const r of neon.rings) {
     r.prevRadius = r.radius;
