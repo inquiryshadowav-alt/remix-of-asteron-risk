@@ -319,6 +319,7 @@ export function tickNeon(state: GameState, dt: number, keys: Set<string>, now: n
         human.neonImmuneColor = color;
         human.neonImmuneUntil = now + 1400;
         emitPlayerRing(state, human.id, color, human.x, human.y, now);
+        addHeat(human, now);
         keys.delete(k);
       }
     }
@@ -342,10 +343,13 @@ export function tickNeon(state: GameState, dt: number, keys: Set<string>, now: n
       const dc = Math.hypot(r.x - p.x, r.y - p.y);
       if (dc < r.radius + 100 && dc < 260) {
         if (!(p.neonImmuneColor === r.color && (p.neonImmuneUntil ?? 0) > now)) {
-          if (Math.random() < 0.4 + cfg.riskThreshold) {
+          // Bots respect the overheat rule: they hold fire when hot.
+          const hot = (p.phiHeat ?? 0) > 0.62;
+          if (!hot && Math.random() < 0.4 + cfg.riskThreshold) {
             p.neonImmuneColor = r.color;
             p.neonImmuneUntil = now + 1400;
             emitPlayerRing(state, p.id, r.color, p.x, p.y, now);
+            addHeat(p, now);
           }
           flee.x += (p.x - r.x) * 0.6;
           flee.y += (p.y - r.y) * 0.6;
@@ -362,6 +366,22 @@ export function tickNeon(state: GameState, dt: number, keys: Set<string>, now: n
       p.direction.x = flee.x / n; p.direction.y = flee.y / n;
     }
   }
+
+  // --- System heat: cool down, and kill anyone who pushes past the red. ---
+  for (const p of state.players) {
+    if (p.phiEliminated) continue;
+    const heat = p.phiHeat ?? 0;
+    if (heat > 0) {
+      p.phiHeat = Math.max(0, heat - HEAT_COOL_PER_MS * dt);
+    }
+    if ((p.phiHeat ?? 0) >= 1) {
+      p.phiHeat = 1;
+      p.phiEliminated = true;
+      p.alive = false;
+      addCorpse(state, p.x, p.y, 'player', p.facingX ?? 1);
+    }
+  }
+
 
   const ALIVE = state.players.filter(p => !p.phiEliminated);
   for (const p of ALIVE) {
