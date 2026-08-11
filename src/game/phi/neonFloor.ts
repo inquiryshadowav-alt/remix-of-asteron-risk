@@ -289,6 +289,18 @@ function canMove(state: GameState, x: number, y: number, nx: number, ny: number)
   return true;
 }
 
+/** Heat added per frequency emit, and passive cooling rate (per ms). */
+const HEAT_PER_EMIT = 0.3;
+export const HEAT_COOL_PER_MS = 0.16 / 1000;
+export const HEAT_WARN = 0.75;
+
+function addHeat(p: { phiHeat?: number; phiLastEmitAt?: number }, now: number) {
+  // Rapid consecutive taps stack harder than spaced-out, deliberate ones.
+  const since = now - (p.phiLastEmitAt ?? -Infinity);
+  const burst = since < 600 ? 1.5 : since < 1200 ? 1.1 : 0.8;
+  p.phiHeat = Math.min(1.2, (p.phiHeat ?? 0) + HEAT_PER_EMIT * burst);
+  p.phiLastEmitAt = now;
+}
 
 export function tickNeon(state: GameState, dt: number, keys: Set<string>, now: number, isMobile: boolean) {
   const neon = state.phi!.neon;
