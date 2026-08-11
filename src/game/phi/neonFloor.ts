@@ -416,12 +416,9 @@ export function tickNeon(state: GameState, dt: number, keys: Set<string>, now: n
   for (const p of ALIVE) {
     if (p.phiQualified) continue;
     const speed = p.speed;
-    const nx = p.x + p.direction.x * speed;
-    const ny = p.y + p.direction.y * speed;
-    if (canMove(state, p.x, p.y, nx, p.y)) p.x = nx;
-    if (canMove(state, p.x, p.y, p.x, ny)) p.y = ny;
-    p.x = Math.max(PLAYER_RADIUS, Math.min(MAP_W - PLAYER_RADIUS, p.x));
-    p.y = Math.max(PLAYER_RADIUS, Math.min(MAP_H - PLAYER_RADIUS, p.y));
+    const moved = moveWithWalls(state, p.x, p.y, p.direction.x * speed, p.direction.y * speed);
+    p.x = moved.x;
+    p.y = moved.y;
     if (Math.abs(p.direction.x) > 0.1) p.facingX = p.direction.x;
   }
   for (let i = 0; i < ALIVE.length; i++) {
