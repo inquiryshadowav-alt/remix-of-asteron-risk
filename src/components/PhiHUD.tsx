@@ -113,6 +113,13 @@ export default function PhiHUD({ state }: Props) {
         )}
       </div>
 
+      {/* LEFT: Neon Overload system heat meter */}
+      {floor === 'neon' && !human.phiEliminated && (
+        <NeonHeatMeter heat={human.phiHeat ?? 0} />
+      )}
+
+
+
       {/* TOP RIGHT: Mars task progress (no overlap) */}
       {floor === 'mars' && !human.phiEliminated && (
         <div className="fixed top-2 right-2 z-40 flex flex-col gap-1 items-end pointer-events-none">
