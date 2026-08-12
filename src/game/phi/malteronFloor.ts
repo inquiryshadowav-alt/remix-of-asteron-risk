@@ -706,7 +706,7 @@ export function renderMalteron(
 ) {
   const rt = state.phi!.mRuntime;
   if (!rt) return;
-  const human = state.players[0];
+  const human = viewPlayer(state);
   const camX = Math.max(0, Math.min(state.mapWidth - canvasW, human.x - canvasW / 2));
   const camY = Math.max(0, Math.min(state.mapHeight - canvasH, human.y - canvasH / 2));
 
