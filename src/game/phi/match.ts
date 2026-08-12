@@ -302,10 +302,41 @@ export function updatePhi(
 
   tickCorpsesAndFx(state, now);
 
+  // Record qualification order (used to break ranking ties).
+  for (const p of state.players) {
+    if (p.phiQualified && p.phiQualifyOrder === undefined) {
+      phi.qualifyCounter = (phi.qualifyCounter ?? 0) + 1;
+      p.phiQualifyOrder = phi.qualifyCounter;
+    }
+  }
+
+  // Dead human auto-spectates the nearest still-playing player.
+  if (!phi.survivorMode) {
+    const h = state.players[0];
+    if (h.phiEliminated) {
+      const cur = phi.spectateId !== undefined
+        ? state.players.find(p => p.id === phi.spectateId)
+        : undefined;
+      if (!cur || cur.phiEliminated) {
+        const candidates = state.players.filter(p => !p.isHuman && !p.phiEliminated);
+        let best: Player | undefined;
+        let bestD = Infinity;
+        for (const p of candidates) {
+          const d = Math.hypot(p.x - h.x, p.y - h.y);
+          if (d < bestD) { bestD = d; best = p; }
+        }
+        phi.spectateId = best?.id;
+      }
+    } else if (phi.spectateId !== undefined) {
+      phi.spectateId = undefined;
+    }
+  }
+
   // Post-tick: check qualifiers / timer / winner
   if (phi.floorPhase === 'active') {
     const survivors = state.players.filter(p => !p.phiEliminated);
     const stillPlaying = survivors.filter(p => !p.phiQualified);
+
 
     // Mars: only eliminate remaining players if the total remaining task
     // pool has dropped below 3 (nobody else can possibly qualify).
