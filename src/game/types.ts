@@ -362,6 +362,13 @@ export interface Player {
   phiHeat?: number;
   /** Timestamp of last frequency emit (heat build-up). */
   phiLastEmitAt?: number;
+  /** PHI competition standings: floors qualified / floors died across match. */
+  phiFloorsQualified?: number;
+  phiFloorsDied?: number;
+  /** Order in which this player qualified on the current floor (1 = first). */
+  phiQualifyOrder?: number;
+  /** Qualification order recorded on the most recent completed floor. */
+  phiLastQualifyOrder?: number;
 }
 
 
