@@ -1,6 +1,6 @@
 import { GameState, PLAYER_RADIUS, NeonMazeCell, NeonState, NeonColor, NeonRing, NeonDragon } from '../types';
 import { drawRobot } from './robot';
-import { addCorpse, renderCorpses, renderSpawnFx, PERSONALITY } from './shared';
+import { addCorpse, renderCorpses, renderSpawnFx, PERSONALITY, viewPlayer } from './shared';
 
 const COLS = 22;
 const ROWS = 14;
@@ -688,7 +688,7 @@ function applyVisionMask(ctx: CanvasRenderingContext2D, cx: number, cy: number, 
 export function renderNeon(ctx: CanvasRenderingContext2D, state: GameState, canvasW: number, canvasH: number) {
   const neon = state.phi!.neon;
   if (!neon) return;
-  const human = state.players[0];
+  const human = viewPlayer(state);
   const camX = Math.max(0, Math.min(MAP_W - canvasW, human.x - canvasW / 2));
   const camY = Math.max(0, Math.min(MAP_H - canvasH, human.y - canvasH / 2));
 

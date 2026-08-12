@@ -180,6 +180,52 @@ export default function SettingsScreen({ initial, onBack, onStart }: Props) {
               </div>
             )}
 
+            {(settings.phiGameMode ?? 'competition') === 'competition' && (() => {
+              const floors = Math.max(1, Math.min(100, settings.phiFloorCount ?? 5));
+              const setFloors = (n: number) =>
+                update({ phiFloorCount: Math.max(1, Math.min(100, n)) });
+              return (
+                <div className="space-y-1">
+                  <div className="text-sm text-foreground">Number of Floors</div>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => setFloors(floors - 1)}
+                      disabled={floors <= 1}
+                      aria-label="Fewer floors"
+                      className="w-11 h-11 rounded-lg border border-white/20 text-lg font-bold text-foreground hover:bg-white/5 disabled:opacity-30"
+                    >−</button>
+                    <div className="flex-1 text-center py-2 rounded-lg border border-primary/40 bg-primary/10">
+                      <span className="text-primary font-bold text-xl">{floors}</span>
+                      <span className="text-muted-foreground text-xs ml-1">floors</span>
+                    </div>
+                    <button
+                      onClick={() => setFloors(floors + 1)}
+                      disabled={floors >= 100}
+                      aria-label="More floors"
+                      className="w-11 h-11 rounded-lg border border-white/20 text-lg font-bold text-foreground hover:bg-white/5 disabled:opacity-30"
+                    >+</button>
+                  </div>
+                  <div className="flex gap-2">
+                    {[3, 5, 10, 25, 50, 100].map(n => (
+                      <button
+                        key={n}
+                        onClick={() => setFloors(n)}
+                        className={`flex-1 py-1 rounded text-[11px] border ${
+                          floors === n
+                            ? 'bg-primary text-primary-foreground border-primary'
+                            : 'border-white/20 text-muted-foreground hover:bg-white/5'
+                        }`}
+                      >{n}</button>
+                    ))}
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    All four floors play once before any repeats. 1–100 floors.
+                  </p>
+                </div>
+              );
+            })()}
+
+
             <div className="space-y-1">
               <div className="text-sm text-foreground">Speed</div>
               <div className="grid grid-cols-3 gap-2">

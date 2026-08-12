@@ -1,6 +1,7 @@
 import { GameState, Player, PLAYER_RADIUS, TASK_RANGE, FreezeProjectile, JAIL_RECT, JAIL_DURATION, DOOR_INTERACT_RANGE, TEAM_COLORS, TEAM_NAMES, TeamIndex, Platform, BUILDER_BLOCK_LIFETIME } from './types';
 import { Powerup, POWERUP_RADIUS } from './types';
 import { ROOM_WALLS, OBSTACLES, ROOMS, SHELTERS, BILLBOARDS } from './collision';
+import { viewPlayer } from './phi/shared';
 
 import crewA from '@/assets/char-crew-a.png';
 import crewB from '@/assets/char-crew-b.png';
@@ -49,7 +50,7 @@ export function renderGame(
     return;
   }
 
-  const human = state.players[0];
+  const human = viewPlayer(state);
   const camX = Math.max(0, Math.min(state.mapWidth - canvasW, human.x - canvasW / 2));
   const camY = Math.max(0, Math.min(state.mapHeight - canvasH, human.y - canvasH / 2));
 

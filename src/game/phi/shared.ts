@@ -1,12 +1,27 @@
-import { GameState, PhiCorpse, PhiSpawnFx, PhiBullet, BotPersonality } from '../types';
+import { GameState, Player, PhiCorpse, PhiSpawnFx, PhiBullet, BotPersonality } from '../types';
 import deadPlayerImg from '@/assets/dead-player.png';
-import malteronJson from '@/assets/malteron.png.asset.json';
+import malteronPng from '@/assets/malteron.png';
 
 function loadImg(src: string): HTMLImageElement {
   const img = new Image(); img.src = src; return img;
 }
 export const DEAD_PLAYER_IMG = loadImg(deadPlayerImg);
-export const DEAD_MALTERON_IMG = loadImg(malteronJson.url);
+export const DEAD_MALTERON_IMG = loadImg(malteronPng);
+
+/**
+ * The player the camera/vision should follow. Normally the human; when the
+ * human is dead in a PHI competition floor it is the player being spectated.
+ */
+export function viewPlayer(state: GameState): Player {
+  const human = state.players[0];
+  const phi = state.phi;
+  if (!phi || phi.survivorMode || !human.phiEliminated) return human;
+  const target = phi.spectateId !== undefined
+    ? state.players.find(p => p.id === phi.spectateId)
+    : undefined;
+  return target && !target.phiEliminated ? target : human;
+}
+
 
 export function ensurePhiBuffers(state: GameState) {
   const phi = state.phi!;

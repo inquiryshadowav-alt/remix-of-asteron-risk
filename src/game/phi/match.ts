@@ -32,15 +32,61 @@ export function currentFloor(state: GameState): PhiFloorId {
   return phi.floorSequence[phi.currentFloorIdx];
 }
 
-function makeSequence(len = MATCH_LENGTH): PhiFloorId[] {
-  // Random floor order with repeats allowed. All 4 floors must appear at least once.
-  const pool: PhiFloorId[] = ['mars', 'nucleus', 'malteron', 'neon'];
-  const seq: PhiFloorId[] = [...pool].sort(() => Math.random() - 0.5);
-  while (seq.length < len) {
-    seq.push(pool[Math.floor(Math.random() * pool.length)]);
+function shuffled<T>(arr: T[]): T[] {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
   }
-  return seq.slice(0, len);
+  return a;
 }
+
+/**
+ * Build a floor sequence: every distinct floor is played once (in random
+ * order) before any floor repeats. Longer matches keep cycling reshuffled
+ * batches so the order stays varied.
+ */
+function makeSequence(len = MATCH_LENGTH): PhiFloorId[] {
+  const pool: PhiFloorId[] = ['mars', 'nucleus', 'malteron', 'neon'];
+  const seq: PhiFloorId[] = [];
+  while (seq.length < len) seq.push(...shuffled(pool));
+  return seq.slice(0, Math.max(1, len));
+}
+
+/** Standings row used by the in-game ranking board and the results screen. */
+export interface PhiRankRow {
+  id: number;
+  name: string;
+  isHuman: boolean;
+  qualified: number;
+  died: number;
+  rank: number;
+}
+
+/**
+ * Ranking: most floors qualified wins. Ties break on who qualified earliest
+ * on the most recent floor (lower order = earlier), then on fewer deaths.
+ */
+export function computeRankings(state: GameState): PhiRankRow[] {
+  const rows = state.players.map(p => ({
+    id: p.id,
+    name: p.name,
+    isHuman: !!p.isHuman,
+    qualified: p.phiFloorsQualified ?? 0,
+    died: p.phiFloorsDied ?? 0,
+    order: p.phiLastQualifyOrder ?? Number.MAX_SAFE_INTEGER,
+    rank: 0,
+  }));
+  rows.sort((a, b) =>
+    b.qualified - a.qualified ||
+    a.order - b.order ||
+    a.died - b.died ||
+    a.id - b.id,
+  );
+  rows.forEach((r, i) => { r.rank = i + 1; });
+  return rows.map(({ order, ...rest }) => rest);
+}
+
 
 export function createPhiMatch(settings: GameSettings, playerName?: string): GameState {
   const isSurvivor = settings.phiGameMode === 'survivor';
@@ -59,7 +105,8 @@ export function createPhiMatch(settings: GameSettings, playerName?: string): Gam
   const base = createGame(patched, playerName);
   base.mode = 'phi';
   // Survivor: much longer floor loop so play continues until death.
-  const sequence = isSurvivor ? makeSequence(24) : makeSequence();
+  const floorCount = Math.max(1, Math.min(100, Math.round(settings.phiFloorCount ?? MATCH_LENGTH)));
+  const sequence = isSurvivor ? makeSequence(24) : makeSequence(floorCount);
   let best = 0;
   try {
     const raw = localStorage.getItem('asteron.survivor.best');
@@ -76,6 +123,7 @@ export function createPhiMatch(settings: GameSettings, playerName?: string): Gam
     survivorMode: isSurvivor,
     floorsSurvived: 0,
     survivorBest: best,
+    qualifyCounter: 0,
   };
   base.phi = phi;
   for (const p of base.players) {
@@ -84,6 +132,10 @@ export function createPhiMatch(settings: GameSettings, playerName?: string): Gam
     p.phiEliminated = false;
     p.phiSpectator = false;
     p.phiFrozen = false;
+    p.phiFloorsQualified = 0;
+    p.phiFloorsDied = 0;
+    p.phiQualifyOrder = undefined;
+    p.phiLastQualifyOrder = undefined;
     if (!p.isHuman) p.enhanced = true;
   }
   assignPersonalities(base);
@@ -97,17 +149,24 @@ function initFloor(state: GameState) {
   const phi = state.phi!;
   const floor = currentFloor(state);
   phi.floorDurationMs = FLOOR_DURATION[floor];
-  // Survivor Mars: strict 25-second window to complete 3 out of 5 tasks.
-  if (phi.survivorMode && floor === 'mars') phi.floorDurationMs = 25_000;
+  // Survivor Mars: 60-second window to complete 3 out of 5 tasks.
+  if (phi.survivorMode && floor === 'mars') phi.floorDurationMs = 60_000;
   phi.floorStartedAt = performance.now();
   phi.floorPhase = 'active';
   phi.banner = { text: FLOOR_NAMES[floor], until: performance.now() + 2500 };
-  // Reset per-player floor state (keep eliminated).
+  phi.qualifyCounter = 0;
+  phi.spectateId = undefined;
+  // Reset per-player floor state. In competition everyone revives each floor:
+  // death only lasts for the floor it happened on.
   for (const p of state.players) {
-    if (p.phiEliminated) continue;
+    if (phi.survivorMode && p.phiEliminated) continue;
+    p.phiEliminated = false;
+    p.phiSpectator = false;
     p.phiQualified = false;
     p.phiFrozen = false;
     p.phiTasks = 0;
+    p.phiQualifyOrder = undefined;
+    p.phiHeat = 0;
     p.alive = true;
     p.direction = { x: 0, y: 0 };
     p.doingTask = false;
@@ -117,6 +176,7 @@ function initFloor(state: GameState) {
     p.phiCrewId = undefined;
     p.phiProtectedUntil = 0;
   }
+
   // Wipe floor-specific state
   phi.electrons = undefined;
   phi.mRuntime = undefined;
@@ -162,21 +222,34 @@ function endMatchIfDone(state: GameState): boolean {
     }
     return false;
   }
-  const surv = state.players.filter(p => !p.phiEliminated);
-  if (surv.length === 0) {
-    phi.result = 'draw';
-    phi.floorPhase = 'ended';
-    state.phase = 'gameover';
-    return true;
-  }
-  if (surv.length === 1) {
-    phi.result = 'winner';
-    phi.winnerName = surv[0].name;
-    phi.floorPhase = 'ended';
-    state.phase = 'gameover';
-    return true;
-  }
+  // Competition: nobody is out for good — the match only ends when the
+  // selected number of floors has been played.
   return false;
+}
+
+/** Close out the current floor: bank qualified/died counters per player. */
+function tallyFloor(state: GameState) {
+  const phi = state.phi!;
+  if (phi.survivorMode) return;
+  for (const p of state.players) {
+    if (p.phiQualified) {
+      p.phiFloorsQualified = (p.phiFloorsQualified ?? 0) + 1;
+      p.phiLastQualifyOrder = p.phiQualifyOrder ?? Number.MAX_SAFE_INTEGER;
+    } else {
+      p.phiLastQualifyOrder = Number.MAX_SAFE_INTEGER;
+    }
+    if (p.phiEliminated) p.phiFloorsDied = (p.phiFloorsDied ?? 0) + 1;
+  }
+}
+
+function finishMatch(state: GameState) {
+  const phi = state.phi!;
+  const rows = computeRankings(state);
+  phi.finalOrder = rows.map(r => r.id);
+  phi.result = 'winner';
+  phi.winnerName = rows[0]?.name ?? '';
+  phi.floorPhase = 'ended';
+  state.phase = 'gameover';
 }
 
 function advanceFloor(state: GameState) {
@@ -187,16 +260,7 @@ function advanceFloor(state: GameState) {
       // Extend sequence indefinitely
       phi.floorSequence.push(...makeSequence(8));
     } else {
-      const surv = state.players.filter(p => !p.phiEliminated);
-      if (surv.length === 1) { phi.result = 'winner'; phi.winnerName = surv[0].name; }
-      else if (surv.length === 0) phi.result = 'draw';
-      else {
-        const human = surv.find(p => p.isHuman);
-        phi.result = 'winner';
-        phi.winnerName = (human ?? surv[0]).name;
-      }
-      phi.floorPhase = 'ended';
-      state.phase = 'gameover';
+      finishMatch(state);
       return;
     }
   }
@@ -207,11 +271,13 @@ function advanceFloor(state: GameState) {
 function beginTransition(state: GameState, msg?: string) {
   const phi = state.phi!;
   if (phi.floorPhase !== 'active') return;
+  tallyFloor(state);
   phi.floorPhase = 'transition';
   const now = performance.now();
   phi.transitionUntil = now + TRANSITION_MS;
-  if (msg) phi.banner = { text: msg, until: now + TRANSITION_MS };
+  phi.banner = msg ? { text: msg, until: now + 1200 } : undefined;
 }
+
 
 export function updatePhi(
   state: GameState,
@@ -236,10 +302,41 @@ export function updatePhi(
 
   tickCorpsesAndFx(state, now);
 
+  // Record qualification order (used to break ranking ties).
+  for (const p of state.players) {
+    if (p.phiQualified && p.phiQualifyOrder === undefined) {
+      phi.qualifyCounter = (phi.qualifyCounter ?? 0) + 1;
+      p.phiQualifyOrder = phi.qualifyCounter;
+    }
+  }
+
+  // Dead human auto-spectates the nearest still-playing player.
+  if (!phi.survivorMode) {
+    const h = state.players[0];
+    if (h.phiEliminated) {
+      const cur = phi.spectateId !== undefined
+        ? state.players.find(p => p.id === phi.spectateId)
+        : undefined;
+      if (!cur || cur.phiEliminated) {
+        const candidates = state.players.filter(p => !p.isHuman && !p.phiEliminated);
+        let best: Player | undefined;
+        let bestD = Infinity;
+        for (const p of candidates) {
+          const d = Math.hypot(p.x - h.x, p.y - h.y);
+          if (d < bestD) { bestD = d; best = p; }
+        }
+        phi.spectateId = best?.id;
+      }
+    } else if (phi.spectateId !== undefined) {
+      phi.spectateId = undefined;
+    }
+  }
+
   // Post-tick: check qualifiers / timer / winner
   if (phi.floorPhase === 'active') {
     const survivors = state.players.filter(p => !p.phiEliminated);
     const stillPlaying = survivors.filter(p => !p.phiQualified);
+
 
     // Mars: only eliminate remaining players if the total remaining task
     // pool has dropped below 3 (nobody else can possibly qualify).
@@ -282,14 +379,15 @@ export function updatePhi(
       return { ...state, timeElapsed: state.timeElapsed + dt };
     }
 
-    // All active players qualified early?
+    // Floor resolved early: nobody left who can still qualify.
     const remainingActive = state.players.filter(p => !p.phiEliminated && !p.phiQualified);
-    if (remainingActive.length === 0 && survivors.length > 0) {
+    if (remainingActive.length === 0) {
       if (!endMatchIfDone(state)) {
-        beginTransition(state, 'ALL PLAYERS QUALIFIED. PROCEEDING...');
+        beginTransition(state, survivors.length > 0 ? 'FLOOR COMPLETE' : 'FLOOR OVER');
       }
       return { ...state, timeElapsed: state.timeElapsed + dt };
     }
+
 
     // Everyone dead / lone survivor
     endMatchIfDone(state);

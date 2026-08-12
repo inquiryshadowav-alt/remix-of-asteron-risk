@@ -11,10 +11,10 @@ import RotateDevicePrompt from './RotateDevicePrompt';
 import DraggableExitButton from './DraggableExitButton';
 import RefereeOverlay from './RefereeOverlay';
 import PhiHUD from './PhiHUD';
-import DeathModal from './DeathModal';
-import { preloadGameAssets } from '@/game/preload';
+import DeathOverlay from './DeathOverlay';
+import RankingBoard from './RankingBoard';
+import { preloadGameAssets, DRAGON_AUDIO_SRC } from '@/game/preload';
 import { startGamepadBridge, stopGamepadBridge } from '@/game/gamepad';
-import dragonAudio from '@/assets/dragon-chase.mp3.asset.json';
 
 interface Props {
   gameState: GameState;
@@ -60,7 +60,7 @@ export default function GameCanvas({ gameState, setGameState, onExit }: Props) {
   // with distance from player to nearest dragon segment.
   const dragonAudioRef = useRef<HTMLAudioElement | null>(null);
   useEffect(() => {
-    const a = new Audio(dragonAudio.url);
+    const a = new Audio(DRAGON_AUDIO_SRC);
     a.loop = true;
     a.volume = 0;
     a.preload = 'auto';
@@ -104,7 +104,7 @@ export default function GameCanvas({ gameState, setGameState, onExit }: Props) {
     const key = e.key.toLowerCase();
     if (down) {
       keysRef.current.add(key);
-      if (key === ' ' || key === 'space') {
+      if (key === ' ' || key === 'space' || key === 'enter') {
         e.preventDefault();
         const now = performance.now();
         const s = stateRef.current;
@@ -507,16 +507,11 @@ export default function GameCanvas({ gameState, setGameState, onExit }: Props) {
         <RefereeOverlay message={gameState.refereeMessage} />
       )}
       {gameState.mode === 'phi' && <PhiHUD state={gameState} />}
+      {gameState.mode === 'phi' && !gameState.phi?.survivorMode && gameState.phase === 'playing' && (
+        <RankingBoard state={gameState} />
+      )}
       {gameState.mode === 'phi' && (
-        <DeathModal
-          state={gameState}
-          onLeave={() => onExit && onExit()}
-          onSpectate={() => {
-            const s = stateRef.current;
-            s.players[0].phiSpectator = true;
-            setGameState({ ...s });
-          }}
-        />
+        <DeathOverlay state={gameState} onLeave={() => onExit && onExit()} />
       )}
       {onExit && <DraggableExitButton onExit={onExit} />}
     </>

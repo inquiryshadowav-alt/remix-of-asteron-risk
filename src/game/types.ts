@@ -167,6 +167,12 @@ export interface PhiState {
   survivorMode?: boolean;
   floorsSurvived?: number;
   survivorBest?: number;
+  /** Competition: id of the player the dead human is currently watching. */
+  spectateId?: number;
+  /** Incrementing counter used to record qualification order on a floor. */
+  qualifyCounter?: number;
+  /** Final standings snapshot (player ids, best first) once the match ends. */
+  finalOrder?: number[];
 }
 export type MatchRounds = 3 | 5 | 10;
 export type RoundTime = 60 | 120 | 300; // seconds per football round
@@ -212,6 +218,8 @@ export interface GameSettings {
   footballSpeed?: FootballSpeedOption; // football only; defaults to 'medium'
   roundTime?: RoundTime; // football only; seconds per round (default 120)
   phiGameMode?: PhiGameMode; // 'competition' (default) | 'survivor'
+  /** PHI Castle competition: number of floors in the match (1..100). */
+  phiFloorCount?: number;
 }
 
 export const DEFAULT_SETTINGS: GameSettings = {
@@ -225,6 +233,7 @@ export const DEFAULT_SETTINGS: GameSettings = {
   matchRounds: 5,
   footballSpeed: 'medium',
   roundTime: 120,
+  phiFloorCount: 5,
 
 };
 
@@ -353,6 +362,13 @@ export interface Player {
   phiHeat?: number;
   /** Timestamp of last frequency emit (heat build-up). */
   phiLastEmitAt?: number;
+  /** PHI competition standings: floors qualified / floors died across match. */
+  phiFloorsQualified?: number;
+  phiFloorsDied?: number;
+  /** Order in which this player qualified on the current floor (1 = first). */
+  phiQualifyOrder?: number;
+  /** Qualification order recorded on the most recent completed floor. */
+  phiLastQualifyOrder?: number;
 }
 
 

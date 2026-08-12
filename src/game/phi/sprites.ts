@@ -1,5 +1,5 @@
-import snakeQueenJson from '@/assets/snake-queen.png.asset.json';
-import malteronJson from '@/assets/malteron.png.asset.json';
+import snakeQueenPng from '@/assets/snake-queen.png';
+import malteronPng from '@/assets/malteron.png';
 
 function loadImg(url: string): HTMLImageElement {
   const img = new Image();
@@ -7,5 +7,5 @@ function loadImg(url: string): HTMLImageElement {
   return img;
 }
 
-export const SNAKE_QUEEN_IMG = loadImg(snakeQueenJson.url);
-export const MALTERON_IMG = loadImg(malteronJson.url);
+export const SNAKE_QUEEN_IMG = loadImg(snakeQueenPng);
+export const MALTERON_IMG = loadImg(malteronPng);

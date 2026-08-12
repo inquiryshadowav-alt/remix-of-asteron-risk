@@ -1,7 +1,7 @@
 import { GameState, Player, PLAYER_RADIUS, PhiElectron, PhiSnakeQueen } from '../types';
 import { SNAKE_QUEEN_IMG } from './sprites';
 import { drawRobot } from './robot';
-import { addCorpse, renderCorpses, renderSpawnFx, PERSONALITY } from './shared';
+import { addCorpse, renderCorpses, renderSpawnFx, PERSONALITY, viewPlayer } from './shared';
 
 const MAP_W = 2000;
 const MAP_H = 1400;
@@ -267,7 +267,7 @@ function drawSnakeQueen(ctx: CanvasRenderingContext2D, sq: PhiSnakeQueen) {
 export function renderNucleus(
   ctx: CanvasRenderingContext2D, state: GameState, canvasW: number, canvasH: number,
 ) {
-  const human = state.players[0];
+  const human = viewPlayer(state);
   const camX = Math.max(0, Math.min(state.mapWidth - canvasW, human.x - canvasW / 2));
   const camY = Math.max(0, Math.min(state.mapHeight - canvasH, human.y - canvasH / 2));
   ctx.save();
