@@ -108,7 +108,7 @@ export default function PhiHUD({ state }: Props) {
             ✓ You are qualified.
           </div>
         )}
-        {human.phiEliminated && isSpec && (
+        {human.phiEliminated && (
           <div className="px-3 py-1 rounded bg-yellow-900/60 text-yellow-300 font-mono text-[11px] tracking-wider">
             SPECTATING
           </div>
@@ -124,7 +124,7 @@ export default function PhiHUD({ state }: Props) {
 
       {/* TOP RIGHT: Mars task progress (no overlap) */}
       {floor === 'mars' && !human.phiEliminated && (
-        <div className="fixed top-2 right-2 z-40 flex flex-col gap-1 items-end pointer-events-none">
+        <div className="fixed top-12 right-2 z-40 flex flex-col gap-1 items-end pointer-events-none">
           <div
             className="px-3 py-1.5 rounded-lg border font-mono text-[clamp(10px,1.2vw,13px)] shadow-lg"
             style={badgeStyle}
@@ -142,7 +142,7 @@ export default function PhiHUD({ state }: Props) {
         </div>
       )}
 
-      {phi.banner && now < phi.banner.until && (
+      {phi.banner && now < phi.banner.until && phi.floorPhase === 'active' && (
         <div className="fixed inset-0 z-40 flex items-center justify-center pointer-events-none">
           <div
             className="px-8 py-4 rounded-2xl border-2 font-mono font-bold text-[clamp(18px,3.2vw,40px)] tracking-widest text-center shadow-2xl"
