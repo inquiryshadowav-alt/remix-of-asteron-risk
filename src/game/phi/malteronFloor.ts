@@ -4,7 +4,7 @@ import { drawRobot } from './robot';
 import {
   ensurePhiBuffers, addCorpse, addSpawnFx, fireBullet as spawnBullet,
   tickBullets, renderBullets, renderCorpses, renderSpawnFx,
-  PERSONALITY,
+  PERSONALITY, viewPlayer,
 } from './shared';
 
 const DETECTION_RADIUS = 220;
