@@ -218,6 +218,8 @@ export interface GameSettings {
   footballSpeed?: FootballSpeedOption; // football only; defaults to 'medium'
   roundTime?: RoundTime; // football only; seconds per round (default 120)
   phiGameMode?: PhiGameMode; // 'competition' (default) | 'survivor'
+  /** PHI Castle competition: number of floors in the match (1..100). */
+  phiFloorCount?: number;
 }
 
 export const DEFAULT_SETTINGS: GameSettings = {
