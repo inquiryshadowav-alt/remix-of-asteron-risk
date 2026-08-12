@@ -1,7 +1,7 @@
 import { GameState, Player, PLAYER_RADIUS, PhiElectron, PhiSnakeQueen } from '../types';
 import { SNAKE_QUEEN_IMG } from './sprites';
 import { drawRobot } from './robot';
-import { addCorpse, renderCorpses, renderSpawnFx, PERSONALITY } from './shared';
+import { addCorpse, renderCorpses, renderSpawnFx, PERSONALITY, viewPlayer } from './shared';
 
 const MAP_W = 2000;
 const MAP_H = 1400;

@@ -1,6 +1,6 @@
 import { GameState, PLAYER_RADIUS, NeonMazeCell, NeonState, NeonColor, NeonRing, NeonDragon } from '../types';
 import { drawRobot } from './robot';
-import { addCorpse, renderCorpses, renderSpawnFx, PERSONALITY } from './shared';
+import { addCorpse, renderCorpses, renderSpawnFx, PERSONALITY, viewPlayer } from './shared';
 
 const COLS = 22;
 const ROWS = 14;
