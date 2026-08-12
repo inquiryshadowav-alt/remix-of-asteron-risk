@@ -379,14 +379,15 @@ export function updatePhi(
       return { ...state, timeElapsed: state.timeElapsed + dt };
     }
 
-    // All active players qualified early?
+    // Floor resolved early: nobody left who can still qualify.
     const remainingActive = state.players.filter(p => !p.phiEliminated && !p.phiQualified);
-    if (remainingActive.length === 0 && survivors.length > 0) {
+    if (remainingActive.length === 0) {
       if (!endMatchIfDone(state)) {
-        beginTransition(state, 'ALL PLAYERS QUALIFIED. PROCEEDING...');
+        beginTransition(state, survivors.length > 0 ? 'FLOOR COMPLETE' : 'FLOOR OVER');
       }
       return { ...state, timeElapsed: state.timeElapsed + dt };
     }
+
 
     // Everyone dead / lone survivor
     endMatchIfDone(state);
