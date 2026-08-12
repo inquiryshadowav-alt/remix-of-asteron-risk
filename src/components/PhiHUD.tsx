@@ -158,17 +158,25 @@ export default function PhiHUD({ state }: Props) {
         </div>
       )}
       {phi.floorPhase === 'transition' && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 pointer-events-none">
-          <div className="text-center space-y-3">
-            <div className="text-white font-mono text-[clamp(22px,4vw,52px)] font-bold tracking-widest">
-              NEXT FLOOR IN {Math.max(0, Math.ceil((phi.transitionUntil - now) / 1000))}
+        <div className="fixed inset-0 z-[45] flex items-center justify-center bg-black/80 backdrop-blur-sm pointer-events-none">
+          <div
+            className="px-8 py-6 rounded-2xl border text-center space-y-2 shadow-2xl"
+            style={{ borderColor: `${theme.primary}66`, background: 'rgba(6,8,14,0.85)' }}
+          >
+            <div className="font-mono text-[11px] tracking-[0.35em] text-white/50">
+              {phi.banner?.text ?? 'FLOOR COMPLETE'}
             </div>
-            <div className="font-mono text-lg" style={{ color: theme.primary }}>
+            <div className="text-white font-mono text-[clamp(28px,5vw,64px)] font-bold leading-none tabular-nums">
+              {Math.max(0, Math.ceil((phi.transitionUntil - now) / 1000))}
+            </div>
+            <div className="font-mono text-[11px] tracking-widest text-white/45">NEXT FLOOR</div>
+            <div className="font-mono text-[clamp(13px,1.8vw,20px)] font-bold" style={{ color: theme.primary }}>
               {FLOOR_THEME[phi.floorSequence[phi.currentFloorIdx + 1] ?? floor]?.name ?? '—'}
             </div>
           </div>
         </div>
       )}
+
     </>
   );
 }
