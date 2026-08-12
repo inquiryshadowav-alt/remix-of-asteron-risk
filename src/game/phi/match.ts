@@ -105,7 +105,8 @@ export function createPhiMatch(settings: GameSettings, playerName?: string): Gam
   const base = createGame(patched, playerName);
   base.mode = 'phi';
   // Survivor: much longer floor loop so play continues until death.
-  const sequence = isSurvivor ? makeSequence(24) : makeSequence();
+  const floorCount = Math.max(1, Math.min(100, Math.round(settings.phiFloorCount ?? MATCH_LENGTH)));
+  const sequence = isSurvivor ? makeSequence(24) : makeSequence(floorCount);
   let best = 0;
   try {
     const raw = localStorage.getItem('asteron.survivor.best');
@@ -122,6 +123,7 @@ export function createPhiMatch(settings: GameSettings, playerName?: string): Gam
     survivorMode: isSurvivor,
     floorsSurvived: 0,
     survivorBest: best,
+    qualifyCounter: 0,
   };
   base.phi = phi;
   for (const p of base.players) {
@@ -130,6 +132,10 @@ export function createPhiMatch(settings: GameSettings, playerName?: string): Gam
     p.phiEliminated = false;
     p.phiSpectator = false;
     p.phiFrozen = false;
+    p.phiFloorsQualified = 0;
+    p.phiFloorsDied = 0;
+    p.phiQualifyOrder = undefined;
+    p.phiLastQualifyOrder = undefined;
     if (!p.isHuman) p.enhanced = true;
   }
   assignPersonalities(base);
@@ -143,17 +149,24 @@ function initFloor(state: GameState) {
   const phi = state.phi!;
   const floor = currentFloor(state);
   phi.floorDurationMs = FLOOR_DURATION[floor];
-  // Survivor Mars: strict 25-second window to complete 3 out of 5 tasks.
-  if (phi.survivorMode && floor === 'mars') phi.floorDurationMs = 25_000;
+  // Survivor Mars: 60-second window to complete 3 out of 5 tasks.
+  if (phi.survivorMode && floor === 'mars') phi.floorDurationMs = 60_000;
   phi.floorStartedAt = performance.now();
   phi.floorPhase = 'active';
   phi.banner = { text: FLOOR_NAMES[floor], until: performance.now() + 2500 };
-  // Reset per-player floor state (keep eliminated).
+  phi.qualifyCounter = 0;
+  phi.spectateId = undefined;
+  // Reset per-player floor state. In competition everyone revives each floor:
+  // death only lasts for the floor it happened on.
   for (const p of state.players) {
-    if (p.phiEliminated) continue;
+    if (phi.survivorMode && p.phiEliminated) continue;
+    p.phiEliminated = false;
+    p.phiSpectator = false;
     p.phiQualified = false;
     p.phiFrozen = false;
     p.phiTasks = 0;
+    p.phiQualifyOrder = undefined;
+    p.phiHeat = 0;
     p.alive = true;
     p.direction = { x: 0, y: 0 };
     p.doingTask = false;
@@ -163,6 +176,7 @@ function initFloor(state: GameState) {
     p.phiCrewId = undefined;
     p.phiProtectedUntil = 0;
   }
+
   // Wipe floor-specific state
   phi.electrons = undefined;
   phi.mRuntime = undefined;
