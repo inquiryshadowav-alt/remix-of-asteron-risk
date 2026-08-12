@@ -1,7 +1,10 @@
 import refereeImg from '@/assets/referee.png';
 import deadPlayerImg from '@/assets/dead-player.png';
-import malteronJson from '@/assets/malteron.png.asset.json';
-import snakeQueenJson from '@/assets/snake-queen.png.asset.json';
+import malteronPng from '@/assets/malteron.png';
+import snakeQueenPng from '@/assets/snake-queen.png';
+import crewA from '@/assets/char-crew-a.png';
+import crewB from '@/assets/char-crew-b.png';
+import dragonMp3 from '@/assets/dragon-chase.mp3';
 
 let started = false;
 const cache: Record<string, HTMLImageElement> = {};
@@ -27,8 +30,10 @@ export async function preloadGameAssets(): Promise<void> {
   const sources = [
     refereeImg,
     deadPlayerImg,
-    (malteronJson as any).url,
-    (snakeQueenJson as any).url,
+    malteronPng,
+    snakeQueenPng,
+    crewA,
+    crewB,
   ];
   await Promise.all(sources.map(loadOne));
 }
@@ -36,3 +41,6 @@ export async function preloadGameAssets(): Promise<void> {
 export function getPreloaded(src: string): HTMLImageElement | undefined {
   return cache[src];
 }
+
+/** Bundled dragon-chase soundtrack (shipped with the build, no CDN needed). */
+export const DRAGON_AUDIO_SRC = dragonMp3;
