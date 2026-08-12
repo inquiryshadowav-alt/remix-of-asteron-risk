@@ -431,7 +431,7 @@ export function tickMalteron(
     } else {
       humanInput = { ...human.direction };
     }
-    if (keys.has(' ') || keys.has('space')) fireBullet(state, human, now);
+    if (keys.has(' ') || keys.has('space') || keys.has('enter') || keys.has('ok')) fireBullet(state, human, now);
   }
 
   // Advance each player along its path
