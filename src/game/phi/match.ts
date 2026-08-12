@@ -32,15 +32,61 @@ export function currentFloor(state: GameState): PhiFloorId {
   return phi.floorSequence[phi.currentFloorIdx];
 }
 
-function makeSequence(len = MATCH_LENGTH): PhiFloorId[] {
-  // Random floor order with repeats allowed. All 4 floors must appear at least once.
-  const pool: PhiFloorId[] = ['mars', 'nucleus', 'malteron', 'neon'];
-  const seq: PhiFloorId[] = [...pool].sort(() => Math.random() - 0.5);
-  while (seq.length < len) {
-    seq.push(pool[Math.floor(Math.random() * pool.length)]);
+function shuffled<T>(arr: T[]): T[] {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
   }
-  return seq.slice(0, len);
+  return a;
 }
+
+/**
+ * Build a floor sequence: every distinct floor is played once (in random
+ * order) before any floor repeats. Longer matches keep cycling reshuffled
+ * batches so the order stays varied.
+ */
+function makeSequence(len = MATCH_LENGTH): PhiFloorId[] {
+  const pool: PhiFloorId[] = ['mars', 'nucleus', 'malteron', 'neon'];
+  const seq: PhiFloorId[] = [];
+  while (seq.length < len) seq.push(...shuffled(pool));
+  return seq.slice(0, Math.max(1, len));
+}
+
+/** Standings row used by the in-game ranking board and the results screen. */
+export interface PhiRankRow {
+  id: number;
+  name: string;
+  isHuman: boolean;
+  qualified: number;
+  died: number;
+  rank: number;
+}
+
+/**
+ * Ranking: most floors qualified wins. Ties break on who qualified earliest
+ * on the most recent floor (lower order = earlier), then on fewer deaths.
+ */
+export function computeRankings(state: GameState): PhiRankRow[] {
+  const rows = state.players.map(p => ({
+    id: p.id,
+    name: p.name,
+    isHuman: !!p.isHuman,
+    qualified: p.phiFloorsQualified ?? 0,
+    died: p.phiFloorsDied ?? 0,
+    order: p.phiLastQualifyOrder ?? Number.MAX_SAFE_INTEGER,
+    rank: 0,
+  }));
+  rows.sort((a, b) =>
+    b.qualified - a.qualified ||
+    a.order - b.order ||
+    a.died - b.died ||
+    a.id - b.id,
+  );
+  rows.forEach((r, i) => { r.rank = i + 1; });
+  return rows.map(({ order, ...rest }) => rest);
+}
+
 
 export function createPhiMatch(settings: GameSettings, playerName?: string): GameState {
   const isSurvivor = settings.phiGameMode === 'survivor';
