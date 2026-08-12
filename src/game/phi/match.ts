@@ -222,21 +222,34 @@ function endMatchIfDone(state: GameState): boolean {
     }
     return false;
   }
-  const surv = state.players.filter(p => !p.phiEliminated);
-  if (surv.length === 0) {
-    phi.result = 'draw';
-    phi.floorPhase = 'ended';
-    state.phase = 'gameover';
-    return true;
-  }
-  if (surv.length === 1) {
-    phi.result = 'winner';
-    phi.winnerName = surv[0].name;
-    phi.floorPhase = 'ended';
-    state.phase = 'gameover';
-    return true;
-  }
+  // Competition: nobody is out for good — the match only ends when the
+  // selected number of floors has been played.
   return false;
+}
+
+/** Close out the current floor: bank qualified/died counters per player. */
+function tallyFloor(state: GameState) {
+  const phi = state.phi!;
+  if (phi.survivorMode) return;
+  for (const p of state.players) {
+    if (p.phiQualified) {
+      p.phiFloorsQualified = (p.phiFloorsQualified ?? 0) + 1;
+      p.phiLastQualifyOrder = p.phiQualifyOrder ?? Number.MAX_SAFE_INTEGER;
+    } else {
+      p.phiLastQualifyOrder = Number.MAX_SAFE_INTEGER;
+    }
+    if (p.phiEliminated) p.phiFloorsDied = (p.phiFloorsDied ?? 0) + 1;
+  }
+}
+
+function finishMatch(state: GameState) {
+  const phi = state.phi!;
+  const rows = computeRankings(state);
+  phi.finalOrder = rows.map(r => r.id);
+  phi.result = 'winner';
+  phi.winnerName = rows[0]?.name ?? '';
+  phi.floorPhase = 'ended';
+  state.phase = 'gameover';
 }
 
 function advanceFloor(state: GameState) {
@@ -247,16 +260,7 @@ function advanceFloor(state: GameState) {
       // Extend sequence indefinitely
       phi.floorSequence.push(...makeSequence(8));
     } else {
-      const surv = state.players.filter(p => !p.phiEliminated);
-      if (surv.length === 1) { phi.result = 'winner'; phi.winnerName = surv[0].name; }
-      else if (surv.length === 0) phi.result = 'draw';
-      else {
-        const human = surv.find(p => p.isHuman);
-        phi.result = 'winner';
-        phi.winnerName = (human ?? surv[0]).name;
-      }
-      phi.floorPhase = 'ended';
-      state.phase = 'gameover';
+      finishMatch(state);
       return;
     }
   }
@@ -267,11 +271,13 @@ function advanceFloor(state: GameState) {
 function beginTransition(state: GameState, msg?: string) {
   const phi = state.phi!;
   if (phi.floorPhase !== 'active') return;
+  tallyFloor(state);
   phi.floorPhase = 'transition';
   const now = performance.now();
   phi.transitionUntil = now + TRANSITION_MS;
-  if (msg) phi.banner = { text: msg, until: now + TRANSITION_MS };
+  phi.banner = msg ? { text: msg, until: now + 1200 } : undefined;
 }
+
 
 export function updatePhi(
   state: GameState,
