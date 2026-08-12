@@ -233,6 +233,7 @@ export const DEFAULT_SETTINGS: GameSettings = {
   matchRounds: 5,
   footballSpeed: 'medium',
   roundTime: 120,
+  phiFloorCount: 5,
 
 };
 
