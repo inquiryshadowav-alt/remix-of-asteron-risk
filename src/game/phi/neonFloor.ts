@@ -309,6 +309,31 @@ function moveWithWalls(state: GameState, x: number, y: number, dx: number, dy: n
   return { x, y };
 }
 
+/** Walkable space in the maze: cell interiors, away from the dragon. */
+function neonSpace(state: GameState): FloorSpace {
+  const neon = state.phi!.neon!;
+  const clear = (x: number, y: number) => {
+    const c = clampToMaze(state, x, y);
+    if (Math.hypot(c.x - x, c.y - y) > 0.5) return false;
+    for (const s of neon.dragon.segments) if (Math.hypot(s.x - x, s.y - y) < 120) return false;
+    return true;
+  };
+  return {
+    walkable: clear,
+    randomPoint: () => {
+      for (let i = 0; i < 80; i++) {
+        const r = Math.floor(Math.random() * ROWS);
+        const c = Math.floor(Math.random() * COLS);
+        const p = cellCenter(r, c);
+        if (clear(p.x, p.y)) return p;
+      }
+      return null;
+    },
+  };
+}
+
+
+
 
 /** Heat added per frequency emit, and passive cooling rate (per ms). */
 const HEAT_PER_EMIT = 0.3;
