@@ -1,6 +1,7 @@
 import { GameState, Player, PLAYER_RADIUS, TASK_RANGE, FreezeProjectile, JAIL_RECT, JAIL_DURATION, DOOR_INTERACT_RANGE, TEAM_COLORS, TEAM_NAMES, TeamIndex, Platform, BUILDER_BLOCK_LIFETIME } from './types';
 import { Powerup, POWERUP_RADIUS } from './types';
 import { ROOM_WALLS, OBSTACLES, ROOMS, SHELTERS, BILLBOARDS } from './collision';
+import { renderBubbles, renderPlayerStatus } from './phi/bubbles';
 import { viewPlayer } from './phi/shared';
 
 import crewA from '@/assets/char-crew-a.png';
@@ -71,6 +72,7 @@ export function renderGame(
   drawDoors(ctx, state);
   drawPlatforms(ctx, state.platforms);
   drawPowerups(ctx, state.powerups);
+  if (state.phi) renderBubbles(ctx, state, animTime);
 
 
   for (const p of state.players) {
@@ -96,6 +98,7 @@ export function renderGame(
 
   // Draw projectiles
   drawProjectiles(ctx, state.projectiles);
+  if (state.phi) renderPlayerStatus(ctx, state, animTime);
 
   ctx.restore();
 
