@@ -61,6 +61,7 @@ export interface PhiRankRow {
   isHuman: boolean;
   qualified: number;
   died: number;
+  hearts: number;
   rank: number;
 }
 
@@ -75,6 +76,7 @@ export function computeRankings(state: GameState): PhiRankRow[] {
     isHuman: !!p.isHuman,
     qualified: p.phiFloorsQualified ?? 0,
     died: p.phiFloorsDied ?? 0,
+    hearts: p.phiExtraHealth ?? 0,
     order: p.phiLastQualifyOrder ?? Number.MAX_SAFE_INTEGER,
     rank: 0,
   }));
