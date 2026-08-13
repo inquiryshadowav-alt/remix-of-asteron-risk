@@ -742,6 +742,7 @@ export function renderNeon(ctx: CanvasRenderingContext2D, state: GameState, canv
   octx.translate(-camX, -camY);
   drawMaze(octx, neon);
   drawDragon(octx, neon.dragon);
+  renderBubbles(octx, state, performance.now());
   for (const p of state.players) {
     if (p.phiEliminated) continue;
     drawRobot(octx, {
@@ -752,8 +753,10 @@ export function renderNeon(ctx: CanvasRenderingContext2D, state: GameState, canv
       label: p.name,
     });
   }
+  renderPlayerStatus(octx, state, performance.now());
   renderCorpses(octx, state, performance.now());
   renderSpawnFx(octx, state, performance.now());
+
   octx.restore();
   // Apply vision mask in SCREEN space, centred on the human.
   const hx = human.x - camX, hy = human.y - camY;
