@@ -2,8 +2,14 @@ import { useEffect, useRef } from 'react';
 import { HEAT_WARN } from '@/game/phi/neonFloor';
 
 interface Props {
-  /** 0..1 system heat. */
+  /** 0..1 heat level. */
   heat: number;
+  /** Vertical label next to the bar. */
+  label?: string;
+  /** Warning banner shown in the red zone. */
+  warning?: string;
+  /** Locked (overheated) styling. */
+  locked?: boolean;
 }
 
 /** Short alarm beep used when the core enters the red zone. */
@@ -32,9 +38,9 @@ function heatColor(h: number) {
   return '#ff3b47';
 }
 
-export default function NeonHeatMeter({ heat }: Props) {
+export default function NeonHeatMeter({ heat, label = 'SYSTEM HEAT', warning = '⚠ SYSTEM OVERLOAD — STOP EMITTING', locked = false }: Props) {
   const clamped = Math.max(0, Math.min(1, heat));
-  const danger = clamped >= HEAT_WARN;
+  const danger = locked || clamped >= HEAT_WARN;
   const lastAlarm = useRef(0);
 
   useEffect(() => {
@@ -66,14 +72,14 @@ export default function NeonHeatMeter({ heat }: Props) {
         />
       </div>
       <div className="font-mono text-[10px] tracking-widest" style={{ color: heatColor(clamped) }}>
-        <div style={{ writingMode: 'vertical-rl' }}>SYSTEM HEAT</div>
+        <div style={{ writingMode: 'vertical-rl' }}>{label}</div>
       </div>
       {danger && (
         <div
           className="px-3 py-2 rounded-lg border-2 font-mono font-bold text-[clamp(10px,1.3vw,14px)] tracking-widest animate-pulse"
           style={{ borderColor: '#ff3b47', color: '#ff6b74', background: 'rgba(40,0,0,0.8)' }}
         >
-          ⚠ SYSTEM OVERLOAD — STOP EMITTING
+          {warning}
         </div>
       )}
     </div>

@@ -97,7 +97,7 @@ export interface NeonState {
 }
 
 export interface PhiElectron {
-  orbit: 'outer' | 'middle' | 'inner';
+  orbit: string;
   angle: number;      // radians
   angularSpeed: number; // rad/ms (signed)
   orbitRadius: number;
@@ -130,6 +130,18 @@ export interface PhiCrew {
   alive: boolean;
 }
 
+export type BubbleKind = 'freeze' | 'health' | 'speed';
+
+export interface PhiBubble {
+  id: number;
+  kind: BubbleKind;
+  x: number; y: number;
+  spawnedAt: number;
+  expiresAt: number;
+}
+
+export type AtomElementId = 'helium' | 'sodium' | 'silver';
+
 export interface PhiState {
   floorSequence: PhiFloorId[];
   currentFloorIdx: number;
@@ -141,10 +153,18 @@ export interface PhiState {
   banner?: { text: string; until: number };
   result?: 'draw' | 'winner';
   winnerName?: string;
+  // Bubble power-ups (all floors)
+  bubbles?: PhiBubble[];
+  nextBubbleId?: number;
+  nextBubbleSpawnAt?: number;
   // Nucleus
   electrons?: PhiElectron[];
   nucleusRadius?: number;
   snakeQueen?: PhiSnakeQueen;
+  /** Nucleus: index into the element progression (0=Helium,1=Sodium,2=Silver). */
+  atomStage?: number;
+  /** Nucleus: element name card shown at the bottom until this timestamp. */
+  atomNameUntil?: number;
   // Malteron
   malterons?: PhiMalteron[];
   crew?: PhiCrew[];
@@ -360,6 +380,16 @@ export interface Player {
   phiProtectedUntil?: number;
   /** Neon Overload: system heat 0..1 from spamming frequency keys. */
   phiHeat?: number;
+  /** Malteron: weapon heat 0..1 from rapid firing. */
+  phiGunHeat?: number;
+  phiGunLocked?: boolean;
+  /** Bubble power-ups: extra hearts (max 5), freeze and speed timers. */
+  phiExtraHealth?: number;
+  phiFrozenUntil?: number;
+  phiSpeedUntil?: number;
+  phiBaseSpeed?: number;
+  /** Nucleus floor: how many element nuclei this player has reached. */
+  phiAtomStage?: number;
   /** Timestamp of last frequency emit (heat build-up). */
   phiLastEmitAt?: number;
   /** PHI competition standings: floors qualified / floors died across match. */

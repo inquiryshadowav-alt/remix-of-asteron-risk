@@ -1,6 +1,10 @@
 import { GameState, PLAYER_RADIUS, NeonMazeCell, NeonState, NeonColor, NeonRing, NeonDragon } from '../types';
 import { drawRobot } from './robot';
 import { addCorpse, renderCorpses, renderSpawnFx, PERSONALITY, viewPlayer } from './shared';
+import {
+  FloorSpace, tickBubbles, renderBubbles, renderPlayerStatus, bubbleSteer,
+  hitPlayer, effSpeed, isFrozen,
+} from './bubbles';
 
 const COLS = 22;
 const ROWS = 14;
@@ -305,6 +309,31 @@ function moveWithWalls(state: GameState, x: number, y: number, dx: number, dy: n
   return { x, y };
 }
 
+/** Walkable space in the maze: cell interiors, away from the dragon. */
+function neonSpace(state: GameState): FloorSpace {
+  const neon = state.phi!.neon!;
+  const clear = (x: number, y: number) => {
+    const c = clampToMaze(state, x, y);
+    if (Math.hypot(c.x - x, c.y - y) > 0.5) return false;
+    for (const s of neon.dragon.segments) if (Math.hypot(s.x - x, s.y - y) < 120) return false;
+    return true;
+  };
+  return {
+    walkable: clear,
+    randomPoint: () => {
+      for (let i = 0; i < 80; i++) {
+        const r = Math.floor(Math.random() * ROWS);
+        const c = Math.floor(Math.random() * COLS);
+        const p = cellCenter(r, c);
+        if (clear(p.x, p.y)) return p;
+      }
+      return null;
+    },
+  };
+}
+
+
+
 
 /** Heat added per frequency emit, and passive cooling rate (per ms). */
 const HEAT_PER_EMIT = 0.3;
@@ -324,13 +353,17 @@ export function tickNeon(state: GameState, dt: number, keys: Set<string>, now: n
   if (!neon) return;
   tickDragon(state, dt);
 
+  const space = neonSpace(state);
+  tickBubbles(state, now, space);
+  const strike = (p: typeof state.players[number]) => hitPlayer(state, p, space, now);
+
   if (now >= neon.pausedUntil && now >= neon.nextEventAt) {
     spawnEvent(state, now);
     scheduleNext(neon, now);
   }
 
   const human = state.players[0];
-  if (human.alive && !human.phiEliminated && !human.phiQualified) {
+  if (human.alive && !human.phiEliminated && !human.phiQualified && !isFrozen(human, now)) {
     let dx = 0, dy = 0;
     if (keys.has('w') || keys.has('arrowup')) dy -= 1;
     if (keys.has('s') || keys.has('arrowdown')) dy += 1;
@@ -356,6 +389,7 @@ export function tickNeon(state: GameState, dt: number, keys: Set<string>, now: n
 
   for (const p of state.players) {
     if (p.isHuman || p.phiEliminated || p.phiQualified) continue;
+    if (isFrozen(p, now)) { p.direction = { x: 0, y: 0 }; continue; }
     const cfg = PERSONALITY[p.botPersonality ?? 'B'];
     let nearest = Infinity;
     for (const s of neon.dragon.segments) {
@@ -385,6 +419,12 @@ export function tickNeon(state: GameState, dt: number, keys: Set<string>, now: n
         }
       }
     }
+    const bub = bubbleSteer(state, p, now);
+    if (bub.weight > 0) {
+      const w = (flee.x === 0 && flee.y === 0) ? 1 : (p.enhanced ? 0.7 : 0.45);
+      flee.x += bub.x * w * 120;
+      flee.y += bub.y * w * 120;
+    }
     if (flee.x === 0 && flee.y === 0) {
       p.direction.x += (Math.random() - 0.5) * cfg.wanderNoise;
       p.direction.y += (Math.random() - 0.5) * cfg.wanderNoise;
@@ -404,10 +444,8 @@ export function tickNeon(state: GameState, dt: number, keys: Set<string>, now: n
       p.phiHeat = Math.max(0, heat - HEAT_COOL_PER_MS * dt);
     }
     if ((p.phiHeat ?? 0) >= 1) {
-      p.phiHeat = 1;
-      p.phiEliminated = true;
-      p.alive = false;
-      addCorpse(state, p.x, p.y, 'player', p.facingX ?? 1);
+      p.phiHeat = 0;
+      strike(p);
     }
   }
 
@@ -415,7 +453,7 @@ export function tickNeon(state: GameState, dt: number, keys: Set<string>, now: n
   const ALIVE = state.players.filter(p => !p.phiEliminated);
   for (const p of ALIVE) {
     if (p.phiQualified) continue;
-    const speed = p.speed;
+    const speed = effSpeed(p, now);
     const moved = moveWithWalls(state, p.x, p.y, p.direction.x * speed, p.direction.y * speed);
     p.x = moved.x;
     p.y = moved.y;
@@ -515,9 +553,7 @@ export function tickNeon(state: GameState, dt: number, keys: Set<string>, now: n
     } else if (firstDanger) {
       // Wrong frequency reaches first → die (covers both "no protection"
       // and "player emitted the wrong color and it met a wrong ring first").
-      p.phiEliminated = true;
-      p.alive = false;
-      addCorpse(state, p.x, p.y, 'player', p.facingX ?? 1);
+      strike(p);
     }
   }
   if (consumedGeneratedRingIds.size > 0) {
@@ -528,8 +564,8 @@ export function tickNeon(state: GameState, dt: number, keys: Set<string>, now: n
     if (p.phiQualified) continue;
     for (const s of neon.dragon.segments) {
       if (Math.hypot(s.x - p.x, s.y - p.y) < 22 + PLAYER_RADIUS - 4) {
-        p.phiEliminated = true; p.alive = false;
-        addCorpse(state, p.x, p.y, 'player', p.facingX ?? 1);
+        if ((p.phiProtectedUntil ?? 0) > now) break;
+        strike(p);
         break;
       }
     }
@@ -706,6 +742,7 @@ export function renderNeon(ctx: CanvasRenderingContext2D, state: GameState, canv
   octx.translate(-camX, -camY);
   drawMaze(octx, neon);
   drawDragon(octx, neon.dragon);
+  renderBubbles(octx, state, performance.now());
   for (const p of state.players) {
     if (p.phiEliminated) continue;
     drawRobot(octx, {
@@ -716,8 +753,10 @@ export function renderNeon(ctx: CanvasRenderingContext2D, state: GameState, canv
       label: p.name,
     });
   }
+  renderPlayerStatus(octx, state, performance.now());
   renderCorpses(octx, state, performance.now());
   renderSpawnFx(octx, state, performance.now());
+
   octx.restore();
   // Apply vision mask in SCREEN space, centred on the human.
   const hx = human.x - camX, hy = human.y - camY;

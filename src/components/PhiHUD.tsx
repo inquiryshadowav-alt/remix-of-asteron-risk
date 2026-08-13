@@ -120,6 +120,16 @@ export default function PhiHUD({ state }: Props) {
         <NeonHeatMeter heat={human.phiHeat ?? 0} />
       )}
 
+      {/* LEFT: Malteron weapon heat meter */}
+      {floor === 'malteron' && !human.phiEliminated && (
+        <NeonHeatMeter
+          heat={human.phiGunHeat ?? 0}
+          locked={!!human.phiGunLocked}
+          label="GUN HEAT"
+          warning="⚠ WEAPON OVERHEATED — HOLD FIRE"
+        />
+      )}
+
 
 
       {/* TOP RIGHT: Mars task progress (no overlap) */}

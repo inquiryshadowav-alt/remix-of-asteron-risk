@@ -6,6 +6,15 @@ import {
   tickBullets, renderBullets, renderCorpses, renderSpawnFx,
   PERSONALITY, viewPlayer,
 } from './shared';
+import {
+  FloorSpace, tickBubbles, renderBubbles, renderPlayerStatus, bubbleSteer,
+  hitPlayer, effSpeed, isFrozen,
+} from './bubbles';
+
+/** Weapon heat: rapid fire overheats the gun and locks it until it cools. */
+export const GUN_HEAT_PER_SHOT = 0.26;
+const GUN_COOL_PER_MS = 0.00042;
+const GUN_UNLOCK_AT = 0.35;
 
 const DETECTION_RADIUS = 220;
 const MALTERON_SPAWN_SAFE_MS = 2500;
@@ -172,6 +181,38 @@ function pointOnPipe(rt: MalteronRuntime, x: number, y: number): boolean {
   }
   return false;
 }
+
+/** Walkable space on Malteron = the pipes carved into the blocks. */
+function malteronSpace(state: GameState): FloorSpace {
+  const rt = state.phi!.mRuntime!;
+  return {
+    walkable: (x, y) => !!rt && pointOnPipe(rt, x, y),
+    randomPoint: () => {
+      if (!rt || !rt.blocks.length) return null;
+      for (let i = 0; i < 40; i++) {
+        const b = rt.blocks[Math.floor(Math.random() * rt.blocks.length)];
+        const t = 0.15 + Math.random() * 0.7;
+        const pos = entityWorldPos(b, t);
+        if (pointOnPipe(rt, pos.x, pos.y)) return pos;
+      }
+      return null;
+    },
+  };
+}
+
+/** Drop a player back onto a random pipe (used when a heart is spent). */
+function placeOnRandomPipe(state: GameState, p: Player) {
+  const rt = state.phi!.mRuntime;
+  if (!rt || !rt.blocks.length) return;
+  const b = rt.blocks[Math.floor(Math.random() * rt.blocks.length)];
+  const t = 0.2 + Math.random() * 0.6;
+  rt.playerPaths.set(p.id, { blockId: b.id, t });
+  const pos = entityWorldPos(b, t);
+  p.x = pos.x; p.y = pos.y;
+  p.direction = { x: 0, y: 0 };
+}
+
+
 
 
 // ---------- Init ----------
@@ -382,6 +423,8 @@ function moveEntityAlong(rt: MalteronRuntime, ep: EntityPath, inputX: number, in
 
 function fireBullet(state: GameState, shooter: Player, now: number) {
   if (!shooter.alive || shooter.phiEliminated) return;
+  if (isFrozen(shooter, now)) return;
+  if (shooter.phiGunLocked) return;
   if ((shooter.phiReloadUntil ?? 0) > now) return;
   if ((shooter.phiBullets ?? 0) <= 0) return;
   const phi = state.phi!;
@@ -395,6 +438,8 @@ function fireBullet(state: GameState, shooter: Player, now: number) {
   if (!best) return;
   // Spawn animated projectile toward target's current position.
   spawnBullet(state, shooter.id, shooter.x, shooter.y, best.x, best.y, '#ffe066', 0.95);
+  shooter.phiGunHeat = Math.min(1, (shooter.phiGunHeat ?? 0) + GUN_HEAT_PER_SHOT);
+  if ((shooter.phiGunHeat ?? 0) >= 1) shooter.phiGunLocked = true;
   shooter.phiBullets = (shooter.phiBullets ?? 3) - 1;
   if (shooter.phiBullets <= 0) {
     shooter.phiReloadUntil = now + 3000;
@@ -413,10 +458,27 @@ export function tickMalteron(
 
   tickShift(state, now, dt);
 
+  const space = malteronSpace(state);
+  tickBubbles(state, now, space);
+
+  // Weapon heat cools every frame; the gun unlocks once it drops low enough.
+  for (const p of state.players) {
+    if (p.phiEliminated) continue;
+    p.phiGunHeat = Math.max(0, (p.phiGunHeat ?? 0) - GUN_COOL_PER_MS * dt);
+    if (p.phiGunLocked && (p.phiGunHeat ?? 0) <= GUN_UNLOCK_AT) p.phiGunLocked = false;
+  }
+
+  /** Lethal hit that respects extra hearts; survivors re-enter on a pipe. */
+  const strike = (p: Player) => {
+    const out = hitPlayer(state, p, space, now);
+    if (!out) placeOnRandomPipe(state, p);
+    return out;
+  };
+
   // Human input
   const human = state.players[0];
   let humanInput = { x: 0, y: 0 };
-  if (human.alive && !human.phiEliminated && !human.phiQualified) {
+  if (human.alive && !human.phiEliminated && !human.phiQualified && !isFrozen(human, now)) {
     let dx = 0, dy = 0;
     if (keys.has('w') || keys.has('arrowup')) dy -= 1;
     if (keys.has('s') || keys.has('arrowdown')) dy += 1;
@@ -440,18 +502,29 @@ export function tickMalteron(
     const ep = rt.playerPaths.get(p.id);
     if (!ep) continue;
     let input = { x: p.direction.x, y: p.direction.y };
-    if (!p.isHuman) {
-      // Bot: move toward own crew if on different block; else stand ground.
+    if (isFrozen(p, now)) {
+      input = { x: 0, y: 0 };
+      p.direction = input;
+    } else if (!p.isHuman) {
+      // Bot: guard its crew, but detour for bubbles by priority.
       const crew = phi.crew?.find(c => c.id === p.phiCrewId);
-      if (crew && crew.alive) {
+      const bub = bubbleSteer(state, p, now);
+      const chase = bub.weight > (p.enhanced ? 0.85 : 0.45);
+      if (crew && crew.alive && !chase) {
         const dx = crew.x - p.x, dy = crew.y - p.y;
         const d = Math.hypot(dx, dy);
         if (d > 60) input = { x: dx / d, y: dy / d };
         else input = { x: 0, y: 0 };
+      } else if (bub.weight > 0) {
+        input = { x: bub.x, y: bub.y };
+      } else {
+        input = { x: 0, y: 0 };
       }
-      fireBullet(state, p, now);
+      p.direction = input;
+      // Bots respect the heat limit: they hold fire while the gun is hot.
+      if (!p.phiGunLocked && (p.phiGunHeat ?? 0) < 0.62) fireBullet(state, p, now);
     }
-    moveEntityAlong(rt, ep, input.x, input.y, p.speed);
+    moveEntityAlong(rt, ep, input.x, input.y, effSpeed(p, now));
     const b = rt.blocks.find(x => x.id === ep.blockId);
     if (b) {
       const pos = entityWorldPos(b, ep.t);
@@ -561,9 +634,7 @@ export function tickMalteron(
         addCorpse(state, target.x, target.y, 'crew', target.facingX);
         const shooter = state.players.find(p => p.id === target!.shooterId);
         if (shooter && !shooter.phiQualified && !shooter.phiEliminated) {
-          shooter.phiEliminated = true;
-          shooter.alive = false;
-          addCorpse(state, shooter.x, shooter.y, 'player', shooter.facingX ?? 1);
+          strike(shooter);
         }
       }
     }
@@ -734,6 +805,7 @@ export function renderMalteron(
   for (const m of state.phi!.malterons ?? []) {
     if (m.alive) drawMalteronSprite(ctx, m);
   }
+  renderBubbles(ctx, state, performance.now());
   // Shooters (players) with SHOOTER red tag
   for (const p of state.players) {
     if (p.phiEliminated) continue;
@@ -752,6 +824,7 @@ export function renderMalteron(
 
   // Corpses, spawn effects, animated bullets
   const now = performance.now();
+  renderPlayerStatus(ctx, state, now);
   renderCorpses(ctx, state, now);
   renderSpawnFx(ctx, state, now);
   renderBullets(ctx, state, now);

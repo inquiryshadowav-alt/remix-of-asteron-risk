@@ -52,13 +52,13 @@ export default function RankingBoard({ state }: Props) {
             </div>
           </div>
           <div className="max-h-[54vh] overflow-y-auto">
-            <div className="grid grid-cols-[28px_1fr_38px_38px] gap-1 px-3 py-1.5 text-[9px] uppercase tracking-wider text-white/40 border-b border-white/5">
-              <span>#</span><span>Player</span><span className="text-right">Qual</span><span className="text-right">Dead</span>
+            <div className="grid grid-cols-[28px_1fr_38px_38px_34px] gap-1 px-3 py-1.5 text-[9px] uppercase tracking-wider text-white/40 border-b border-white/5">
+              <span>#</span><span>Player</span><span className="text-right">Qual</span><span className="text-right">Dead</span><span className="text-right">HP</span>
             </div>
             {rows.map(r => (
               <div
                 key={r.id}
-                className={`grid grid-cols-[28px_1fr_38px_38px] gap-1 px-3 py-1.5 text-[11px] items-center border-b border-white/5 ${
+                className={`grid grid-cols-[28px_1fr_38px_38px_34px] gap-1 px-3 py-1.5 text-[11px] items-center border-b border-white/5 ${
                   r.isHuman ? 'bg-amber-300/10' : ''
                 }`}
               >
@@ -71,6 +71,7 @@ export default function RankingBoard({ state }: Props) {
                 </span>
                 <span className="text-right text-emerald-300/90">{r.qualified}</span>
                 <span className="text-right text-red-300/80">{r.died}</span>
+                <span className="text-right text-pink-300/90">{r.hearts > 0 ? `+${r.hearts}` : "—"}</span>
               </div>
             ))}
           </div>
