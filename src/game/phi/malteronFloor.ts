@@ -182,6 +182,38 @@ function pointOnPipe(rt: MalteronRuntime, x: number, y: number): boolean {
   return false;
 }
 
+/** Walkable space on Malteron = the pipes carved into the blocks. */
+function malteronSpace(state: GameState): FloorSpace {
+  const rt = state.phi!.mRuntime!;
+  return {
+    walkable: (x, y) => !!rt && pointOnPipe(rt, x, y),
+    randomPoint: () => {
+      if (!rt || !rt.blocks.length) return null;
+      for (let i = 0; i < 40; i++) {
+        const b = rt.blocks[Math.floor(Math.random() * rt.blocks.length)];
+        const t = 0.15 + Math.random() * 0.7;
+        const pos = entityWorldPos(b, t);
+        if (pointOnPipe(rt, pos.x, pos.y)) return pos;
+      }
+      return null;
+    },
+  };
+}
+
+/** Drop a player back onto a random pipe (used when a heart is spent). */
+function placeOnRandomPipe(state: GameState, p: Player) {
+  const rt = state.phi!.mRuntime;
+  if (!rt || !rt.blocks.length) return;
+  const b = rt.blocks[Math.floor(Math.random() * rt.blocks.length)];
+  const t = 0.2 + Math.random() * 0.6;
+  rt.playerPaths.set(p.id, { blockId: b.id, t });
+  const pos = entityWorldPos(b, t);
+  p.x = pos.x; p.y = pos.y;
+  p.direction = { x: 0, y: 0 };
+}
+
+
+
 
 // ---------- Init ----------
 
