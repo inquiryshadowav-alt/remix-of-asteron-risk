@@ -2,25 +2,87 @@ import { GameState, Player, PLAYER_RADIUS, PhiElectron, PhiSnakeQueen } from '..
 import { SNAKE_QUEEN_IMG } from './sprites';
 import { drawRobot } from './robot';
 import { addCorpse, renderCorpses, renderSpawnFx, PERSONALITY, viewPlayer } from './shared';
+import {
+  FloorSpace, tickBubbles, renderBubbles, renderPlayerStatus, bubbleSteer,
+  hitPlayer, effSpeed, isFrozen, resetBubbles,
+} from './bubbles';
 
 const MAP_W = 2000;
 const MAP_H = 1400;
 const NUCLEUS_R = 80;
 const ELECTRON_SIZE = 22;
 
-// Inner shells faster (survival priority for cautious bots).
-const ORBITS = {
-  s5: { r: 620, count: 12, speed:  0.00016 },
-  s4: { r: 500, count: 10, speed: -0.00024 },
-  s3: { r: 380, count:  8, speed:  0.00055 },
-  s2: { r: 250, count:  5, speed: -0.00110 },
-  s1: { r: 140, count:  2, speed:  0.00230 },
-} as const;
+interface Shell { r: number; count: number; speed: number }
+interface ElementDef { id: string; name: string; symbol: string; tint: string; shells: Shell[] }
 
-type OrbitKey = keyof typeof ORBITS;
+/**
+ * Element progression. Reach the nucleus to move on to the next element;
+ * reaching the LAST element's nucleus qualifies the player for the floor.
+ */
+export const ELEMENTS: ElementDef[] = [
+  {
+    id: 'helium', name: 'HELIUM', symbol: 'He', tint: '#ffb46b',
+    shells: [{ r: 300, count: 2, speed: 0.00170 }],
+  },
+  {
+    id: 'sodium', name: 'SODIUM', symbol: 'Na', tint: '#9ad7ff',
+    shells: [
+      { r: 560, count: 5, speed: 0.00035 },
+      { r: 400, count: 4, speed: -0.00060 },
+      { r: 230, count: 2, speed: 0.00120 },
+    ],
+  },
+  {
+    id: 'silver', name: 'SILVER', symbol: 'Ag', tint: '#e2e8f0',
+    shells: [
+      { r: 620, count: 12, speed: 0.00016 },
+      { r: 500, count: 10, speed: -0.00024 },
+      { r: 380, count: 8, speed: 0.00055 },
+      { r: 250, count: 5, speed: -0.00110 },
+      { r: 140, count: 2, speed: 0.00230 },
+    ],
+  },
+];
 
 function cx(state: GameState) { return state.mapWidth / 2; }
 function cy(state: GameState) { return state.mapHeight / 2; }
+
+function stageOf(state: GameState) {
+  return Math.max(0, Math.min(ELEMENTS.length - 1, state.phi!.atomStage ?? 0));
+}
+export function currentElement(state: GameState) { return ELEMENTS[stageOf(state)]; }
+
+function buildStage(state: GameState, stage: number, now = performance.now()) {
+  const phi = state.phi!;
+  phi.atomStage = stage;
+  phi.atomNameUntil = now + 5000;
+  const el = ELEMENTS[stage];
+  const electrons: PhiElectron[] = [];
+  el.shells.forEach((cfg, si) => {
+    for (let i = 0; i < cfg.count; i++) {
+      electrons.push({
+        orbit: `${el.id}-${si}`,
+        angle: (i / cfg.count) * Math.PI * 2 + Math.random() * 0.3,
+        angularSpeed: cfg.speed,
+        orbitRadius: cfg.r,
+        size: ELECTRON_SIZE,
+      });
+    }
+  });
+  phi.electrons = electrons;
+  phi.nucleusRadius = NUCLEUS_R;
+
+  const outer = el.shells.reduce((m, s) => Math.max(m, s.r), 0) + 110;
+  const contenders = state.players.filter(p => !p.phiEliminated && !p.phiQualified);
+  contenders.forEach((p, i) => {
+    const angle = (i / Math.max(1, contenders.length)) * Math.PI * 2 + Math.random() * 0.2;
+    p.x = Math.max(60, Math.min(MAP_W - 60, cx(state) + Math.cos(angle) * outer));
+    p.y = Math.max(60, Math.min(MAP_H - 60, cy(state) + Math.sin(angle) * outer));
+    p.direction = { x: 0, y: 0 };
+    p.phiFrozen = false;
+  });
+  resetBubbles(state, now);
+}
 
 export function initNucleusFloor(state: GameState) {
   state.mapWidth = MAP_W;
@@ -31,37 +93,13 @@ export function initNucleusFloor(state: GameState) {
   state.projectiles = [];
   state.platforms = [];
 
-  const electrons: PhiElectron[] = [];
-  (Object.keys(ORBITS) as OrbitKey[]).forEach(o => {
-    const cfg = ORBITS[o];
-    for (let i = 0; i < cfg.count; i++) {
-      electrons.push({
-        orbit: o as any,
-        angle: (i / cfg.count) * Math.PI * 2 + Math.random() * 0.3,
-        angularSpeed: cfg.speed,
-        orbitRadius: cfg.r,
-        size: ELECTRON_SIZE,
-      });
-    }
-  });
   const sq: PhiSnakeQueen = {
     x: 250, y: 250, tx: 250, ty: 250, facingX: 1,
     detectionRadius: 155, nextTargetAt: 0, bobT: 0,
   };
-  state.phi!.electrons = electrons;
-  state.phi!.nucleusRadius = NUCLEUS_R;
   state.phi!.snakeQueen = sq;
-
-  const active = state.players.filter(p => !p.phiEliminated);
-  active.forEach((p, i) => {
-    const angle = (i / active.length) * Math.PI * 2;
-    p.x = cx(state) + Math.cos(angle) * (ORBITS.s5.r + 90);
-    p.y = cy(state) + Math.sin(angle) * (ORBITS.s5.r + 90);
-    p.x = Math.max(60, Math.min(MAP_W - 60, p.x));
-    p.y = Math.max(60, Math.min(MAP_H - 60, p.y));
-    p.direction = { x: 0, y: 0 };
-    p.phiFrozen = false;
-  });
+  for (const p of state.players) p.phiAtomStage = 0;
+  buildStage(state, 0);
 }
 
 function electronPositions(state: GameState) {
@@ -73,11 +111,39 @@ function electronPositions(state: GameState) {
   }));
 }
 
+/** Walkable space: anywhere inside the arena away from orbits, nucleus and queen. */
+function nucleusSpace(state: GameState): FloorSpace {
+  const el = currentElement(state);
+  const sq = state.phi!.snakeQueen;
+  const safe = (x: number, y: number) => {
+    if (x < 70 || y < 70 || x > state.mapWidth - 70 || y > state.mapHeight - 70) return false;
+    const d = Math.hypot(x - cx(state), y - cy(state));
+    if (d < (state.phi!.nucleusRadius ?? NUCLEUS_R) + 40) return false;
+    for (const s of el.shells) if (Math.abs(d - s.r) < 55) return false;
+    if (sq && Math.hypot(x - sq.x, y - sq.y) < sq.detectionRadius + 90) return false;
+    return true;
+  };
+  return {
+    walkable: safe,
+    randomPoint: () => {
+      for (let i = 0; i < 80; i++) {
+        const x = 80 + Math.random() * (state.mapWidth - 160);
+        const y = 80 + Math.random() * (state.mapHeight - 160);
+        if (safe(x, y)) return { x, y };
+      }
+      return null;
+    },
+  };
+}
+
 export function tickNucleus(
   state: GameState, dt: number, keys: Set<string>, now: number, isMobile: boolean,
 ) {
   const phi = state.phi!;
   for (const e of phi.electrons ?? []) e.angle += e.angularSpeed * dt;
+
+  const space = nucleusSpace(state);
+  tickBubbles(state, now, space);
 
   // Snake Queen wanders the whole map
   const sq = phi.snakeQueen!;
@@ -95,7 +161,7 @@ export function tickNucleus(
 
   // Human input
   const human = state.players[0];
-  if (human.alive && !human.phiEliminated && !human.phiQualified) {
+  if (human.alive && !human.phiEliminated && !human.phiQualified && !isFrozen(human, now)) {
     let dx = 0, dy = 0;
     if (keys.has('w') || keys.has('arrowup')) dy -= 1;
     if (keys.has('s') || keys.has('arrowdown')) dy += 1;
@@ -111,66 +177,80 @@ export function tickNucleus(
 
   const ePos = electronPositions(state);
   const cxN = cx(state), cyN = cy(state);
+  let stageAdvanced = false;
 
   for (const p of state.players) {
     if (p.phiEliminated || p.phiQualified) continue;
 
     // Snake Queen instant kill
     if (Math.hypot(p.x - sq.x, p.y - sq.y) < sq.detectionRadius) {
-      p.phiEliminated = true; p.alive = false;
-      addCorpse(state, p.x, p.y, 'player', p.facingX ?? 1);
+      hitPlayer(state, p, space, now);
       continue;
     }
 
-    // Bot AI: SURVIVE first, then advance. Cautious personality bias.
-    if (!p.isHuman) {
+    // Bot AI: SURVIVE first, then advance. Enhanced bots chase the win harder.
+    if (!p.isHuman && !isFrozen(p, now)) {
       const cfg = PERSONALITY[p.botPersonality ?? 'B'];
       let dirX = 0, dirY = 0;
-      // Check nearby electron danger within perception radius
       let danger = 0;
       for (const e of ePos) {
         const d = Math.hypot(e.x - p.x, e.y - p.y);
         if (d < 90) { dirX += (p.x - e.x) / d; dirY += (p.y - e.y) / d; danger++; }
       }
-      // Snake queen avoidance
       const dq = Math.hypot(sq.x - p.x, sq.y - p.y);
       if (dq < sq.detectionRadius + 90) {
         dirX += (p.x - sq.x) / dq; dirY += (p.y - sq.y) / dq; danger++;
       }
-      if (danger === 0 && Math.random() < cfg.advanceChance) {
-        const dxN = cxN - p.x, dyN = cyN - p.y;
-        const dN = Math.max(1, Math.hypot(dxN, dyN));
-        dirX = dxN / dN; dirY = dyN / dN;
-      } else if (danger === 0) {
-        // hold pocket with small wander
-        dirX = (Math.random() - 0.5) * cfg.wanderNoise;
-        dirY = (Math.random() - 0.5) * cfg.wanderNoise;
+      const bub = bubbleSteer(state, p, now);
+      const advance = p.enhanced ? Math.max(cfg.advanceChance, 0.8) : cfg.advanceChance;
+      if (danger === 0) {
+        const toward = Math.random() < advance;
+        if (toward) {
+          const dxN = cxN - p.x, dyN = cyN - p.y;
+          const dN = Math.max(1, Math.hypot(dxN, dyN));
+          dirX = dxN / dN; dirY = dyN / dN;
+        } else {
+          dirX = (Math.random() - 0.5) * cfg.wanderNoise;
+          dirY = (Math.random() - 0.5) * cfg.wanderNoise;
+        }
+        if (bub.weight > 0) { dirX += bub.x * bub.weight * 1.3; dirY += bub.y * bub.weight * 1.3; }
+      } else if (bub.weight > 0.7) {
+        dirX += bub.x * bub.weight; dirY += bub.y * bub.weight;
       }
       const n = Math.hypot(dirX, dirY) || 1;
       p.direction = { x: dirX / n, y: dirY / n };
     }
 
-    p.x += p.direction.x * p.speed;
-    p.y += p.direction.y * p.speed;
+    const sp = effSpeed(p, now);
+    p.x += p.direction.x * sp;
+    p.y += p.direction.y * sp;
     if (Math.abs(p.direction.x) + Math.abs(p.direction.y) > 0.1) {
       p.facingX = p.direction.x; p.facingY = p.direction.y;
     }
     p.x = Math.max(PLAYER_RADIUS, Math.min(state.mapWidth - PLAYER_RADIUS, p.x));
     p.y = Math.max(PLAYER_RADIUS, Math.min(state.mapHeight - PLAYER_RADIUS, p.y));
 
-    for (const e of ePos) {
-      if (Math.hypot(e.x - p.x, e.y - p.y) < e.r + PLAYER_RADIUS - 2) {
-        p.phiEliminated = true; p.alive = false;
-        addCorpse(state, p.x, p.y, 'player', p.facingX ?? 1);
-        break;
+    if ((p.phiProtectedUntil ?? 0) < now) {
+      for (const e of ePos) {
+        if (Math.hypot(e.x - p.x, e.y - p.y) < e.r + PLAYER_RADIUS - 2) {
+          hitPlayer(state, p, space, now);
+          break;
+        }
       }
     }
     if (p.phiEliminated) continue;
 
     if (Math.hypot(cxN - p.x, cyN - p.y) < (phi.nucleusRadius! - 4)) {
-      p.phiQualified = true;
+      p.phiAtomStage = (p.phiAtomStage ?? 0) + 1;
+      if (stageOf(state) >= ELEMENTS.length - 1) {
+        p.phiQualified = true;   // reached the final element's nucleus
+      } else {
+        stageAdvanced = true;
+      }
     }
   }
+
+  if (stageAdvanced) buildStage(state, stageOf(state) + 1, now);
 }
 
 // ==== Rendering ====
@@ -195,12 +275,12 @@ function drawHedge(ctx: CanvasRenderingContext2D, w: number, h: number) {
   ctx.fillRect(90, 90, w - 180, h - 180);
 }
 
-function drawOrbits(ctx: CanvasRenderingContext2D, cx: number, cy: number) {
+function drawOrbits(ctx: CanvasRenderingContext2D, cx: number, cy: number, shells: Shell[]) {
   ctx.strokeStyle = 'rgba(180,80,220,0.55)';
   ctx.lineWidth = 5;
-  for (const k of Object.keys(ORBITS) as OrbitKey[]) {
+  for (const s of shells) {
     ctx.beginPath();
-    ctx.arc(cx, cy, ORBITS[k].r, 0, Math.PI * 2);
+    ctx.arc(cx, cy, s.r, 0, Math.PI * 2);
     ctx.stroke();
   }
 }
@@ -264,6 +344,40 @@ function drawSnakeQueen(ctx: CanvasRenderingContext2D, sq: PhiSnakeQueen) {
   ctx.restore();
 }
 
+function drawElementCard(
+  ctx: CanvasRenderingContext2D, state: GameState, canvasW: number, canvasH: number, now: number,
+) {
+  const phi = state.phi!;
+  if (now >= (phi.atomNameUntil ?? 0)) return;
+  const el = currentElement(state);
+  const left = (phi.atomNameUntil ?? 0) - now;
+  const alpha = Math.min(1, left / 600);
+  const w = 380, h = 92;
+  const x = canvasW / 2 - w / 2;
+  const y = canvasH - h - 26;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = 'rgba(6,8,14,0.86)';
+  ctx.strokeStyle = el.tint;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  (ctx as any).roundRect ? (ctx as any).roundRect(x, y, w, h, 14) : ctx.rect(x, y, w, h);
+  ctx.fill(); ctx.stroke();
+  ctx.fillStyle = el.tint;
+  ctx.font = 'bold 42px monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText(el.symbol, x + 22, y + 62);
+  ctx.font = 'bold 24px monospace';
+  ctx.fillText(el.name, x + 100, y + 44);
+  ctx.font = '12px monospace';
+  ctx.fillStyle = 'rgba(255,255,255,0.65)';
+  ctx.fillText(
+    `ELEMENT ${stageOf(state) + 1}/${ELEMENTS.length} · REACH THE NUCLEUS`,
+    x + 100, y + 68,
+  );
+  ctx.restore();
+}
+
 export function renderNucleus(
   ctx: CanvasRenderingContext2D, state: GameState, canvasW: number, canvasH: number,
 ) {
@@ -278,7 +392,7 @@ export function renderNucleus(
 
   drawHedge(ctx, state.mapWidth, state.mapHeight);
   const cxN = state.mapWidth / 2, cyN = state.mapHeight / 2;
-  drawOrbits(ctx, cxN, cyN);
+  drawOrbits(ctx, cxN, cyN, currentElement(state).shells);
   drawNucleus(ctx, cxN, cyN, state.phi!.nucleusRadius!);
 
   for (const e of state.phi!.electrons ?? []) {
@@ -288,6 +402,9 @@ export function renderNucleus(
   }
 
   drawSnakeQueen(ctx, state.phi!.snakeQueen!);
+
+  const now = performance.now();
+  renderBubbles(ctx, state, now);
 
   for (const p of state.players) {
     if (p.phiEliminated) continue;
@@ -299,11 +416,12 @@ export function renderNucleus(
       label: p.name,
     });
   }
+  renderPlayerStatus(ctx, state, now);
 
-  const now = performance.now();
   renderCorpses(ctx, state, now);
   renderSpawnFx(ctx, state, now);
 
   ctx.restore();
-}
 
+  drawElementCard(ctx, state, canvasW, canvasH, now);
+}

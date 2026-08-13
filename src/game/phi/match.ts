@@ -9,6 +9,7 @@ import { tickMars, initMarsFloor } from './marsFloor';
 import { initNeonFloor, tickNeon, renderNeon } from './neonFloor';
 import { renderGame as renderMarsBase } from '../renderer';
 import { assignPersonalities, ensurePhiBuffers, tickCorpsesAndFx } from './shared';
+import { resetBubbles } from './bubbles';
 
 const MATCH_LENGTH = 5;
 const TRANSITION_MS = 3000;
@@ -22,9 +23,9 @@ const FLOOR_NAMES: Record<PhiFloorId, string> = {
 
 const FLOOR_DURATION: Record<PhiFloorId, number> = {
   mars: 0,
-  nucleus: 220_000,
-  malteron: 240_000,
-  neon: 250_000,
+  nucleus: 120_000,
+  malteron: 120_000,
+  neon: 120_000,
 };
 
 export function currentFloor(state: GameState): PhiFloorId {
@@ -136,8 +137,14 @@ export function createPhiMatch(settings: GameSettings, playerName?: string): Gam
     p.phiFloorsDied = 0;
     p.phiQualifyOrder = undefined;
     p.phiLastQualifyOrder = undefined;
-    if (!p.isHuman) p.enhanced = true;
+    p.phiExtraHealth = 0;
+    p.phiBaseSpeed = p.speed;
+    p.enhanced = false;
   }
+  // Exactly half of the bots (rounded) are Enhanced bots.
+  const bots = base.players.filter(p => !p.isHuman);
+  const enhancedCount = Math.round(bots.length / 2);
+  for (const b of shuffled(bots).slice(0, enhancedCount)) b.enhanced = true;
   assignPersonalities(base);
   ensurePhiBuffers(base);
   initFloor(base);
@@ -175,6 +182,13 @@ function initFloor(state: GameState) {
     p.phiReloadUntil = 0;
     p.phiCrewId = undefined;
     p.phiProtectedUntil = 0;
+    p.phiFrozenUntil = 0;
+    p.phiSpeedUntil = 0;
+    p.phiGunHeat = 0;
+    p.phiGunLocked = false;
+    p.phiAtomStage = 0;
+    if (p.phiBaseSpeed === undefined) p.phiBaseSpeed = p.speed;
+    else p.speed = p.phiBaseSpeed;
   }
 
   // Wipe floor-specific state
@@ -193,6 +207,9 @@ function initFloor(state: GameState) {
   phi.malteronCountdownUntil = undefined;
   phi.malteronSpawned = false;
   phi.pendingMalteronSpawns = [];
+  phi.atomStage = 0;
+  phi.atomNameUntil = 0;
+  resetBubbles(state, performance.now());
 
   if (floor === 'mars') initMarsFloor(state);
   else if (floor === 'nucleus') initNucleusFloor(state);

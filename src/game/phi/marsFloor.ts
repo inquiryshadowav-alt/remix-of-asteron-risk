@@ -2,6 +2,54 @@ import { GameState, Player, PLAYER_RADIUS, TASK_RANGE, TaskStation, MAP_WIDTH, M
 import { createTaskStations } from '../tasks';
 import { resolveCollisions, createDoors } from '../collision';
 import { getNavigationDirection } from '../navigation';
+import {
+  FloorSpace, tickBubbles, bubbleSteer, effSpeed, isFrozen,
+} from './bubbles';
+
+/** Walkable space on Mars: inside bounds and clear of walls/obstacles. */
+export function marsSpace(state: GameState): FloorSpace {
+  const walkable = (x: number, y: number) => {
+    if (x < PLAYER_RADIUS + 10 || y < PLAYER_RADIUS + 10) return false;
+    if (x > state.mapWidth - PLAYER_RADIUS - 10 || y > state.mapHeight - PLAYER_RADIUS - 10) return false;
+    const r = resolveCollisions(x, y, state.doors);
+    return Math.hypot(r.x - x, r.y - y) < 0.5;
+  };
+  return {
+    walkable,
+    randomPoint: () => {
+      for (let i = 0; i < 120; i++) {
+        const x = 60 + Math.random() * (state.mapWidth - 120);
+        const y = 60 + Math.random() * (state.mapHeight - 120);
+        if (walkable(x, y)) return { x, y };
+      }
+      return null;
+    },
+  };
+}
+
+/**
+ * Bots never body-slam walls: if the desired heading is blocked, fan out to
+ * the closest free heading (which naturally funnels them through doorways).
+ */
+function steerAroundWalls(
+  state: GameState, p: Player, dir: { x: number; y: number }, speed: number,
+): { x: number; y: number } {
+  const probe = Math.max(speed * 3, 22);
+  const free = (dx: number, dy: number) => {
+    const nx = p.x + dx * probe, ny = p.y + dy * probe;
+    const r = resolveCollisions(nx, ny, state.doors);
+    return Math.hypot(r.x - nx, r.y - ny) < 0.5;
+  };
+  if (free(dir.x, dir.y)) return dir;
+  for (const a of [0.5, -0.5, 1.0, -1.0, 1.6, -1.6, 2.3, -2.3]) {
+    const cos = Math.cos(a), sin = Math.sin(a);
+    const dx = dir.x * cos - dir.y * sin;
+    const dy = dir.x * sin + dir.y * cos;
+    if (free(dx, dy)) return { x: dx, y: dy };
+  }
+  return dir;
+}
+
 
 /** Mars floor: complete 3 tasks. No combat, no jail. Player count × 2 task stations. */
 export function initMarsFloor(state: GameState) {
@@ -57,9 +105,11 @@ export function tickMars(
   state: GameState, dt: number, keys: Set<string>, now: number, isMobile: boolean,
 ) {
   const human = state.players[0];
+  const space = marsSpace(state);
+  tickBubbles(state, now, space);
 
   // Human keyboard input — qualified players may keep playing (do more tasks).
-  if (human.alive && !human.phiEliminated && !human.doingTask) {
+  if (human.alive && !human.phiEliminated && !human.doingTask && !isFrozen(human, now)) {
     let dx = 0, dy = 0;
     if (keys.has('w') || keys.has('arrowup')) dy -= 1;
     if (keys.has('s') || keys.has('arrowdown')) dy += 1;
@@ -77,10 +127,20 @@ export function tickMars(
 
   for (const p of state.players) {
     if (p.phiEliminated) continue;
+    const frozen = isFrozen(p, now);
+    if (frozen) {
+      p.direction = { x: 0, y: 0 };
+      p.doingTask = false;
+      p.taskStationId = null;
+    }
     // Qualified bots stop competing (leave remaining tasks for others).
-    if (!p.isHuman && !p.doingTask && !p.phiQualified) {
+    if (!frozen && !p.isHuman && !p.doingTask && !p.phiQualified) {
       const target = nearestIncompleteTask(p, state);
-      if (target) {
+      const bub = bubbleSteer(state, p, now);
+      // Enhanced bots value the win (and health pickups) above all else;
+      // normal bots put staying safe first, so freeze avoidance dominates.
+      const chaseBubble = bub.weight > (p.enhanced ? 0.85 : 0.45);
+      if (target && !chaseBubble) {
         const d = Math.hypot(target.x - p.x, target.y - p.y);
         if (d < TASK_RANGE * 0.6) {
           p.doingTask = true;
@@ -88,13 +148,22 @@ export function tickMars(
           p.taskProgress = 0;
           p.direction = { x: 0, y: 0 };
         } else {
-          p.direction = getNavigationDirection(p.x, p.y, target.x, target.y);
+          const nav = getNavigationDirection(p.x, p.y, target.x, target.y);
+          let dx = nav.x, dy = nav.y;
+          if (bub.weight > 0) { dx += bub.x * bub.weight * 0.8; dy += bub.y * bub.weight * 0.8; }
+          const n = Math.hypot(dx, dy) || 1;
+          p.direction = steerAroundWalls(state, p, { x: dx / n, y: dy / n }, p.speed);
         }
+      } else if (bub.weight > 0) {
+        p.direction = steerAroundWalls(state, p, { x: bub.x, y: bub.y }, p.speed);
       } else {
         p.direction = { x: 0, y: 0 };
       }
-    } else if (!p.isHuman && p.phiQualified) {
-      p.direction = { x: 0, y: 0 };
+    } else if (!frozen && !p.isHuman && p.phiQualified) {
+      const bub = bubbleSteer(state, p, now);
+      p.direction = bub.weight > 0
+        ? steerAroundWalls(state, p, { x: bub.x, y: bub.y }, p.speed)
+        : { x: 0, y: 0 };
     }
 
     // Bot task progress (5s)
@@ -117,8 +186,9 @@ export function tickMars(
     }
 
     // Move
-    p.x += p.direction.x * p.speed;
-    p.y += p.direction.y * p.speed;
+    const sp = effSpeed(p, now);
+    p.x += p.direction.x * sp;
+    p.y += p.direction.y * sp;
     if (Math.abs(p.direction.x) + Math.abs(p.direction.y) > 0.1) {
       p.facingX = p.direction.x; p.facingY = p.direction.y;
     }
@@ -126,5 +196,6 @@ export function tickMars(
     p.y = Math.max(PLAYER_RADIUS, Math.min(state.mapHeight - PLAYER_RADIUS, p.y));
     const r = resolveCollisions(p.x, p.y, state.doors);
     p.x = r.x; p.y = r.y;
+
   }
 }
