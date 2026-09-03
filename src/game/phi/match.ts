@@ -368,18 +368,16 @@ export function updatePhi(
     const stillPlaying = survivors.filter(p => !p.phiQualified);
 
 
-    // Mars: only eliminate remaining players if the total remaining task
-    // pool has dropped below 3 (nobody else can possibly qualify).
-    // Do NOT touch already-qualified players.
-    if (floor === 'mars') {
+    // Mars (competition): nobody is eliminated for running out of tasks.
+    // Everyone keeps playing until every station on the colony is done.
+    if (floor === 'mars' && !phi.survivorMode) {
       const remaining = state.taskStations.filter(s => !s.completed).length;
-      if (remaining < 3) {
-        for (const p of stillPlaying) {
-          p.phiEliminated = true;
-          p.alive = false;
-        }
+      if (remaining === 0) {
+        beginTransition(state, 'ALL TASKS COMPLETE');
+        return { ...state, timeElapsed: state.timeElapsed + dt };
       }
     }
+
 
     // Timer expiry
     if (phi.floorDurationMs > 0 && now - phi.floorStartedAt >= phi.floorDurationMs) {
