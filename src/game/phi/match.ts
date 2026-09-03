@@ -59,6 +59,8 @@ export interface PhiRankRow {
   id: number;
   name: string;
   isHuman: boolean;
+  xp: number;
+  floorXp: number;
   qualified: number;
   died: number;
   hearts: number;
@@ -66,14 +68,17 @@ export interface PhiRankRow {
 }
 
 /**
- * Ranking: most floors qualified wins. Ties break on who qualified earliest
- * on the most recent floor (lower order = earlier), then on fewer deaths.
+ * Ranking is XP-driven: +1 XP per nucleus touched, Malteron killed, Mars task
+ * completed and correct Neon frequency released. Ties break on the XP earned
+ * on the current floor, then on who resolved the previous floor earliest.
  */
 export function computeRankings(state: GameState): PhiRankRow[] {
   const rows = state.players.map(p => ({
     id: p.id,
     name: p.name,
     isHuman: !!p.isHuman,
+    xp: p.phiXP ?? 0,
+    floorXp: p.phiFloorXP ?? 0,
     qualified: p.phiFloorsQualified ?? 0,
     died: p.phiFloorsDied ?? 0,
     hearts: p.phiExtraHealth ?? 0,
@@ -81,14 +86,15 @@ export function computeRankings(state: GameState): PhiRankRow[] {
     rank: 0,
   }));
   rows.sort((a, b) =>
-    b.qualified - a.qualified ||
+    b.xp - a.xp ||
+    b.floorXp - a.floorXp ||
     a.order - b.order ||
-    a.died - b.died ||
     a.id - b.id,
   );
   rows.forEach((r, i) => { r.rank = i + 1; });
   return rows.map(({ order, ...rest }) => rest);
 }
+
 
 
 export function createPhiMatch(settings: GameSettings, playerName?: string): GameState {
@@ -140,8 +146,11 @@ export function createPhiMatch(settings: GameSettings, playerName?: string): Gam
     p.phiQualifyOrder = undefined;
     p.phiLastQualifyOrder = undefined;
     p.phiExtraHealth = 0;
+    p.phiXP = 0;
+    p.phiFloorXP = 0;
     p.phiBaseSpeed = p.speed;
     p.enhanced = false;
+
   }
   // Exactly half of the bots (rounded) are Enhanced bots.
   const bots = base.players.filter(p => !p.isHuman);
@@ -174,8 +183,10 @@ function initFloor(state: GameState) {
     p.phiQualified = false;
     p.phiFrozen = false;
     p.phiTasks = 0;
+    p.phiFloorXP = 0;
     p.phiQualifyOrder = undefined;
     p.phiHeat = 0;
+
     p.alive = true;
     p.direction = { x: 0, y: 0 };
     p.doingTask = false;
@@ -357,18 +368,16 @@ export function updatePhi(
     const stillPlaying = survivors.filter(p => !p.phiQualified);
 
 
-    // Mars: only eliminate remaining players if the total remaining task
-    // pool has dropped below 3 (nobody else can possibly qualify).
-    // Do NOT touch already-qualified players.
-    if (floor === 'mars') {
+    // Mars (competition): nobody is eliminated for running out of tasks.
+    // Everyone keeps playing until every station on the colony is done.
+    if (floor === 'mars' && !phi.survivorMode) {
       const remaining = state.taskStations.filter(s => !s.completed).length;
-      if (remaining < 3) {
-        for (const p of stillPlaying) {
-          p.phiEliminated = true;
-          p.alive = false;
-        }
+      if (remaining === 0) {
+        beginTransition(state, 'ALL TASKS COMPLETE');
+        return { ...state, timeElapsed: state.timeElapsed + dt };
       }
     }
+
 
     // Timer expiry
     if (phi.floorDurationMs > 0 && now - phi.floorStartedAt >= phi.floorDurationMs) {

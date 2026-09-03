@@ -203,3 +203,13 @@ export function assignPersonalities(state: GameState) {
     if (!p.botPersonality) p.botPersonality = pool[Math.floor(Math.random() * pool.length)];
   }
 }
+
+/**
+ * Award XP. XP is the single currency the PHI standings are built on:
+ * nucleus touches, Malteron kills, Mars tasks and correct Neon frequencies
+ * all pay out +1 each.
+ */
+export function awardXP(p: Player, amount = 1) {
+  p.phiXP = (p.phiXP ?? 0) + amount;
+  p.phiFloorXP = (p.phiFloorXP ?? 0) + amount;
+}

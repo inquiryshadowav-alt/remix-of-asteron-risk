@@ -1,10 +1,12 @@
-import { GameState, Player, PLAYER_RADIUS, TASK_RANGE, TaskStation, MAP_WIDTH, MAP_HEIGHT } from '../types';
+import { GameState, Player, PLAYER_RADIUS, TASK_RANGE, TaskStation, MAP_WIDTH, MAP_HEIGHT, JAIL_RECT } from '../types';
 import { createTaskStations } from '../tasks';
-import { resolveCollisions, createDoors } from '../collision';
+import { resolveCollisions, createDoors, OBSTACLES } from '../collision';
 import { getNavigationDirection } from '../navigation';
+import { awardXP } from './shared';
 import {
   FloorSpace, tickBubbles, bubbleSteer, effSpeed, isFrozen,
 } from './bubbles';
+
 
 /** Walkable space on Mars: inside bounds and clear of walls/obstacles. */
 export function marsSpace(state: GameState): FloorSpace {

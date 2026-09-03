@@ -399,7 +399,12 @@ export interface Player {
   phiQualifyOrder?: number;
   /** Qualification order recorded on the most recent completed floor. */
   phiLastQualifyOrder?: number;
+  /** Cumulative XP across the match (drives the standings). */
+  phiXP?: number;
+  /** XP earned on the current floor only. */
+  phiFloorXP?: number;
 }
+
 
 
 export interface Platform {
