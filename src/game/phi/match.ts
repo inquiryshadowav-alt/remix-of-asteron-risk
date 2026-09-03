@@ -146,8 +146,11 @@ export function createPhiMatch(settings: GameSettings, playerName?: string): Gam
     p.phiQualifyOrder = undefined;
     p.phiLastQualifyOrder = undefined;
     p.phiExtraHealth = 0;
+    p.phiXP = 0;
+    p.phiFloorXP = 0;
     p.phiBaseSpeed = p.speed;
     p.enhanced = false;
+
   }
   // Exactly half of the bots (rounded) are Enhanced bots.
   const bots = base.players.filter(p => !p.isHuman);
