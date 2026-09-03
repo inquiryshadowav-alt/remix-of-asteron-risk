@@ -183,8 +183,10 @@ function initFloor(state: GameState) {
     p.phiQualified = false;
     p.phiFrozen = false;
     p.phiTasks = 0;
+    p.phiFloorXP = 0;
     p.phiQualifyOrder = undefined;
     p.phiHeat = 0;
+
     p.alive = true;
     p.direction = { x: 0, y: 0 };
     p.doingTask = false;
