@@ -177,9 +177,9 @@ export function tickMars(
           s.completed = true;
           state.tasksCompleted++;
           p.phiTasks = (p.phiTasks ?? 0) + 1;
-          if ((p.phiTasks ?? 0) >= 3 && !p.phiQualified) {
-            p.phiQualified = true;
-          }
+          // +1 XP per task. No qualification / elimination on Mars.
+          awardXP(p, 1);
+          if (state.phi?.survivorMode && (p.phiTasks ?? 0) >= 3) p.phiQualified = true;
         }
         p.doingTask = false;
         p.taskStationId = null;

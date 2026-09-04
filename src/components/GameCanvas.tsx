@@ -299,18 +299,18 @@ export default function GameCanvas({ gameState, setGameState, onExit }: Props) {
       if (station && !station.completed) {
         station.completed = true;
         s.tasksCompleted++;
-        // PHI Mars: qualification counter
+        playSfx('taskWin', 0.6, 2200);
+        // PHI Mars: +1 XP per task completed.
         if (s.mode === 'phi') {
           const h = s.players[0];
           h.phiTasks = (h.phiTasks ?? 0) + 1;
-          if ((h.phiTasks ?? 0) >= 3 && !h.phiQualified) {
+          awardXP(h, 1);
+          if (s.phi?.survivorMode && (h.phiTasks ?? 0) >= 3 && !h.phiQualified) {
             h.phiQualified = true;
-            if (s.phi) {
-              s.phi.banner = {
-                text: 'YOU ARE QUALIFIED! You may continue doing tasks if you want.',
-                until: performance.now() + 3200,
-              };
-            }
+            s.phi.banner = {
+              text: 'QUALIFIED — 3 TASKS COMPLETE',
+              until: performance.now() + 2600,
+            };
           }
         }
       }
