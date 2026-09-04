@@ -55,6 +55,7 @@ export function currentElement(state: GameState) { return ELEMENTS[stageOf(state
 
 function buildStage(state: GameState, stage: number, now = performance.now()) {
   const phi = state.phi!;
+  if (stage > 0) playSfx('element', 0.55, 1500);
   phi.atomStage = stage;
   phi.atomNameUntil = now + 5000;
   const el = ELEMENTS[stage];
