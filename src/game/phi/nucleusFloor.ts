@@ -241,6 +241,8 @@ export function tickNucleus(
     if (p.phiEliminated) continue;
 
     if (Math.hypot(cxN - p.x, cyN - p.y) < (phi.nucleusRadius! - 4)) {
+      // +1 XP per distinct nucleus touched (helium → sodium → silver).
+      if ((p.phiAtomStage ?? 0) <= stageOf(state)) awardXP(p, 1);
       p.phiAtomStage = (p.phiAtomStage ?? 0) + 1;
       if (stageOf(state) >= ELEMENTS.length - 1) {
         p.phiQualified = true;   // reached the final element's nucleus

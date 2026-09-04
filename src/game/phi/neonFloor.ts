@@ -549,6 +549,8 @@ export function tickNeon(state: GameState, dt: number, keys: Set<string>, now: n
       p.neonImmuneColor = undefined;
       p.neonImmuneUntil = 0;
       p.phiProtectedUntil = now + 1200;
+      // +1 XP for releasing the correct frequency against an incoming wave.
+      awardXP(p, 1);
       for (const r of eventRings) r.hitPlayers.add(p.id);
     } else if (firstDanger) {
       // Wrong frequency reaches first → die (covers both "no protection"
