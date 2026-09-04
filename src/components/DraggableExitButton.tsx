@@ -75,30 +75,60 @@ export default function DraggableExitButton({ onExit }: Props) {
     if (wasDrag) {
       try { localStorage.setItem(STORAGE_KEY, JSON.stringify(pos)); } catch {}
     } else {
-      // Treat as tap → exit
-      if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
-      onExit();
+      setConfirm(true);
     }
   };
 
+  const doExit = () => {
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    onExit();
+  };
+
   return (
-    <button
-      ref={btnRef}
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerUp}
-      onPointerCancel={onPointerUp}
-      className="fixed z-[90] px-3 py-1.5 rounded-md bg-background/80 border border-border text-foreground font-mono text-sm hover:bg-background select-none"
-      style={{
-        left: pos.x,
-        top: pos.y,
-        backdropFilter: 'blur(4px)',
-        touchAction: 'none',
-        cursor: dragState.current.pointerId !== null ? 'grabbing' : 'grab',
-      }}
-      aria-label="Exit (tap) or drag to move"
-    >
-      ⬅ Exit
-    </button>
+    <>
+      <button
+        ref={btnRef}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
+        className="fixed z-[90] px-3 py-1.5 rounded-md bg-background/80 border border-border text-foreground font-mono text-sm hover:bg-background select-none"
+        style={{
+          left: pos.x,
+          top: pos.y,
+          backdropFilter: 'blur(4px)',
+          touchAction: 'none',
+          cursor: dragState.current.pointerId !== null ? 'grabbing' : 'grab',
+        }}
+        aria-label="Exit (tap) or drag to move"
+      >
+        ⬅ Exit
+      </button>
+
+      {confirm && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-background/70 backdrop-blur-sm p-4">
+          <div className="w-[min(360px,92vw)] rounded-xl border border-border bg-card p-5 font-mono shadow-2xl">
+            <div className="text-sm font-bold text-foreground">Leave the match?</div>
+            <p className="mt-2 text-xs text-muted-foreground">
+              Are you sure? You won't be able to play any longer.
+            </p>
+            <div className="mt-4 flex gap-2">
+              <button
+                onClick={doExit}
+                className="flex-1 rounded-md bg-destructive px-3 py-2 text-xs font-bold text-destructive-foreground hover:opacity-90"
+              >
+                Yes, leave
+              </button>
+              <button
+                onClick={() => setConfirm(false)}
+                className="flex-1 rounded-md border border-border px-3 py-2 text-xs font-bold text-foreground hover:bg-muted"
+              >
+                No
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
