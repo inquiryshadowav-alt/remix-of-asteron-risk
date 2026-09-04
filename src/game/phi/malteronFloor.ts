@@ -4,8 +4,9 @@ import { drawRobot } from './robot';
 import {
   ensurePhiBuffers, addCorpse, addSpawnFx, fireBullet as spawnBullet,
   tickBullets, renderBullets, renderCorpses, renderSpawnFx,
-  PERSONALITY, viewPlayer,
+  PERSONALITY, viewPlayer, awardXP,
 } from './shared';
+import { playSfxThrottled } from '../audio';
 import {
   FloorSpace, tickBubbles, renderBubbles, renderPlayerStatus, bubbleSteer,
   hitPlayer, effSpeed, isFrozen,
@@ -357,6 +358,7 @@ function tickShift(state: GameState, now: number, dt: number) {
     if (b) candidates.push(b);
   }
   if (candidates.length === 0) return;
+  playSfxThrottled('slide', 900, 0.35, 1400);
   const mover = candidates[Math.floor(Math.random() * candidates.length)];
   const oldRow = mover.row, oldCol = mover.col;
   mover.row = rt.emptyRow;
@@ -438,6 +440,7 @@ function fireBullet(state: GameState, shooter: Player, now: number) {
   if (!best) return;
   // Spawn animated projectile toward target's current position.
   spawnBullet(state, shooter.id, shooter.x, shooter.y, best.x, best.y, '#ffe066', 0.95);
+  playSfxThrottled('laser', 90, shooter.isHuman ? 0.5 : 0.18, 700);
   shooter.phiGunHeat = Math.min(1, (shooter.phiGunHeat ?? 0) + GUN_HEAT_PER_SHOT);
   if ((shooter.phiGunHeat ?? 0) >= 1) shooter.phiGunLocked = true;
   shooter.phiBullets = (shooter.phiBullets ?? 3) - 1;
@@ -653,6 +656,9 @@ export function tickMalteron(
         addCorpse(state, m.x, m.y, 'malteron', m.facingX);
         phi.pendingMalteronSpawns ??= [];
         phi.pendingMalteronSpawns.push(now + 300);
+        // +1 XP for the shooter who landed the kill.
+        const killer = state.players.find(p => p.id === b.ownerId);
+        if (killer) awardXP(killer, 1);
         return true;
       }
     }

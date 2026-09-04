@@ -10,6 +10,7 @@ import { initNeonFloor, tickNeon, renderNeon } from './neonFloor';
 import { renderGame as renderMarsBase } from '../renderer';
 import { assignPersonalities, ensurePhiBuffers, tickCorpsesAndFx } from './shared';
 import { resetBubbles } from './bubbles';
+import { stopAllLoops } from '../audio';
 
 const MATCH_LENGTH = 5;
 const TRANSITION_MS = 3000;
@@ -223,6 +224,7 @@ function initFloor(state: GameState) {
   phi.atomStage = 0;
   phi.atomNameUntil = 0;
   resetBubbles(state, performance.now());
+  stopAllLoops();
 
   if (floor === 'mars') initMarsFloor(state);
   else if (floor === 'nucleus') initNucleusFloor(state);

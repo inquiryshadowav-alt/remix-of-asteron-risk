@@ -1,16 +1,21 @@
-import laserAsset from '@/assets/sfx-laser.wav.asset.json';
-import slideAsset from '@/assets/sfx-slide.wav.asset.json';
-import taskWinAsset from '@/assets/sfx-task-win.wav.asset.json';
-import elementAsset from '@/assets/sfx-element.wav.asset.json';
-import bangAsset from '@/assets/sfx-bang.mp3.asset.json';
+import laserUrl from '@/assets/sfx-laser.wav';
+import slideUrl from '@/assets/sfx-slide.wav';
+import taskWinUrl from '@/assets/sfx-task-win.wav';
+import elementUrl from '@/assets/sfx-element.wav';
+import bangUrl from '@/assets/sfx-bang.mp3';
+import bgmUrl from '@/assets/dragon-chase.mp3';
 
+/** All sound effects are bundled with the build (no CDN dependency). */
 export const SFX = {
-  laser: laserAsset.url,
-  slide: slideAsset.url,
-  taskWin: taskWinAsset.url,
-  element: elementAsset.url,
-  bang: bangAsset.url,
+  laser: laserUrl,
+  slide: slideUrl,
+  taskWin: taskWinUrl,
+  element: elementUrl,
+  bang: bangUrl,
 } as const;
+
+/** Looping background music track (Electron floor). */
+export const BGM_ELECTRON = bgmUrl;
 
 export type SfxName = keyof typeof SFX;
 

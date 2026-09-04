@@ -1,7 +1,8 @@
 import { GameState, Player, PLAYER_RADIUS, PhiElectron, PhiSnakeQueen } from '../types';
 import { SNAKE_QUEEN_IMG } from './sprites';
 import { drawRobot } from './robot';
-import { addCorpse, renderCorpses, renderSpawnFx, PERSONALITY, viewPlayer } from './shared';
+import { addCorpse, renderCorpses, renderSpawnFx, PERSONALITY, viewPlayer, awardXP } from './shared';
+import { playSfx, startLoop, BGM_ELECTRON } from '../audio';
 import {
   FloorSpace, tickBubbles, renderBubbles, renderPlayerStatus, bubbleSteer,
   hitPlayer, effSpeed, isFrozen, resetBubbles,
@@ -54,6 +55,7 @@ export function currentElement(state: GameState) { return ELEMENTS[stageOf(state
 
 function buildStage(state: GameState, stage: number, now = performance.now()) {
   const phi = state.phi!;
+  if (stage > 0) playSfx('element', 0.55, 1500);
   phi.atomStage = stage;
   phi.atomNameUntil = now + 5000;
   const el = ELEMENTS[stage];
@@ -100,6 +102,7 @@ export function initNucleusFloor(state: GameState) {
   state.phi!.snakeQueen = sq;
   for (const p of state.players) p.phiAtomStage = 0;
   buildStage(state, 0);
+  startLoop(BGM_ELECTRON, 0.22);
 }
 
 function electronPositions(state: GameState) {
@@ -241,6 +244,8 @@ export function tickNucleus(
     if (p.phiEliminated) continue;
 
     if (Math.hypot(cxN - p.x, cyN - p.y) < (phi.nucleusRadius! - 4)) {
+      // +1 XP per distinct nucleus touched (helium → sodium → silver).
+      if ((p.phiAtomStage ?? 0) <= stageOf(state)) awardXP(p, 1);
       p.phiAtomStage = (p.phiAtomStage ?? 0) + 1;
       if (stageOf(state) >= ELEMENTS.length - 1) {
         p.phiQualified = true;   // reached the final element's nucleus

@@ -15,6 +15,8 @@ import DeathOverlay from './DeathOverlay';
 import RankingBoard from './RankingBoard';
 import { preloadGameAssets, DRAGON_AUDIO_SRC } from '@/game/preload';
 import { startGamepadBridge, stopGamepadBridge } from '@/game/gamepad';
+import { playSfx, preloadSfx, stopAllLoops } from '@/game/audio';
+import { awardXP } from '@/game/phi/shared';
 
 interface Props {
   gameState: GameState;
@@ -52,8 +54,9 @@ export default function GameCanvas({ gameState, setGameState, onExit }: Props) {
   // Preload critical assets + gamepad bridge (once per mount).
   useEffect(() => {
     preloadGameAssets();
+    preloadSfx();
     startGamepadBridge();
-    return () => stopGamepadBridge();
+    return () => { stopGamepadBridge(); stopAllLoops(); };
   }, []);
 
   // Dragon Chase looping audio — active only on Neon floor. Volume scales
@@ -99,7 +102,15 @@ export default function GameCanvas({ gameState, setGameState, onExit }: Props) {
   const handleKey = useCallback((e: KeyboardEvent, down: boolean) => {
     // Desktop-only: ignore all keyboard input on mobile devices.
     if (isMobile) return;
-    if (showTask) return;
+    // While a task overlay is open we still process key-UPs, otherwise the
+    // release is swallowed and the player keeps sliding after the overlay
+    // closes.
+    if (showTask) {
+      if (!down) keysRef.current.delete(e.key.toLowerCase());
+      return;
+    }
+
+
 
     const key = e.key.toLowerCase();
     if (down) {
@@ -299,18 +310,18 @@ export default function GameCanvas({ gameState, setGameState, onExit }: Props) {
       if (station && !station.completed) {
         station.completed = true;
         s.tasksCompleted++;
-        // PHI Mars: qualification counter
+        playSfx('taskWin', 0.6, 2200);
+        // PHI Mars: +1 XP per task completed.
         if (s.mode === 'phi') {
           const h = s.players[0];
           h.phiTasks = (h.phiTasks ?? 0) + 1;
-          if ((h.phiTasks ?? 0) >= 3 && !h.phiQualified) {
+          awardXP(h, 1);
+          if (s.phi?.survivorMode && (h.phiTasks ?? 0) >= 3 && !h.phiQualified) {
             h.phiQualified = true;
-            if (s.phi) {
-              s.phi.banner = {
-                text: 'YOU ARE QUALIFIED! You may continue doing tasks if you want.',
-                until: performance.now() + 3200,
-              };
-            }
+            s.phi.banner = {
+              text: 'QUALIFIED — 3 TASKS COMPLETE',
+              until: performance.now() + 2600,
+            };
           }
         }
       }
