@@ -2,7 +2,7 @@ import { GameState, Player, PLAYER_RADIUS, PhiElectron, PhiSnakeQueen } from '..
 import { SNAKE_QUEEN_IMG } from './sprites';
 import { drawRobot } from './robot';
 import { addCorpse, renderCorpses, renderSpawnFx, PERSONALITY, viewPlayer, awardXP } from './shared';
-import { playSfx } from '../audio';
+import { playSfx, startLoop, BGM_ELECTRON } from '../audio';
 import {
   FloorSpace, tickBubbles, renderBubbles, renderPlayerStatus, bubbleSteer,
   hitPlayer, effSpeed, isFrozen, resetBubbles,
@@ -102,6 +102,7 @@ export function initNucleusFloor(state: GameState) {
   state.phi!.snakeQueen = sq;
   for (const p of state.players) p.phiAtomStage = 0;
   buildStage(state, 0);
+  startLoop(BGM_ELECTRON, 0.22);
 }
 
 function electronPositions(state: GameState) {
