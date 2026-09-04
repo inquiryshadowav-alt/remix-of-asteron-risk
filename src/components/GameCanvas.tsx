@@ -54,8 +54,9 @@ export default function GameCanvas({ gameState, setGameState, onExit }: Props) {
   // Preload critical assets + gamepad bridge (once per mount).
   useEffect(() => {
     preloadGameAssets();
+    preloadSfx();
     startGamepadBridge();
-    return () => stopGamepadBridge();
+    return () => { stopGamepadBridge(); stopAllLoops(); };
   }, []);
 
   // Dragon Chase looping audio — active only on Neon floor. Volume scales
@@ -101,7 +102,15 @@ export default function GameCanvas({ gameState, setGameState, onExit }: Props) {
   const handleKey = useCallback((e: KeyboardEvent, down: boolean) => {
     // Desktop-only: ignore all keyboard input on mobile devices.
     if (isMobile) return;
-    if (showTask) return;
+    // While a task overlay is open we still process key-UPs, otherwise the
+    // release is swallowed and the player keeps sliding after the overlay
+    // closes.
+    if (showTask) {
+      if (!down) keysRef.current.delete(e.key.toLowerCase());
+      return;
+    }
+
+
 
     const key = e.key.toLowerCase();
     if (down) {
