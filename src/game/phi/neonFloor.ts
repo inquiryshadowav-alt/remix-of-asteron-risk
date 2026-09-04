@@ -1,6 +1,6 @@
 import { GameState, PLAYER_RADIUS, NeonMazeCell, NeonState, NeonColor, NeonRing, NeonDragon } from '../types';
 import { drawRobot } from './robot';
-import { addCorpse, renderCorpses, renderSpawnFx, PERSONALITY, viewPlayer } from './shared';
+import { addCorpse, renderCorpses, renderSpawnFx, PERSONALITY, viewPlayer, awardXP } from './shared';
 import {
   FloorSpace, tickBubbles, renderBubbles, renderPlayerStatus, bubbleSteer,
   hitPlayer, effSpeed, isFrozen,

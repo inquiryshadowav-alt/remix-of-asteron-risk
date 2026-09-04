@@ -1,7 +1,8 @@
 import { GameState, Player, PLAYER_RADIUS, PhiElectron, PhiSnakeQueen } from '../types';
 import { SNAKE_QUEEN_IMG } from './sprites';
 import { drawRobot } from './robot';
-import { addCorpse, renderCorpses, renderSpawnFx, PERSONALITY, viewPlayer } from './shared';
+import { addCorpse, renderCorpses, renderSpawnFx, PERSONALITY, viewPlayer, awardXP } from './shared';
+import { playSfx } from '../audio';
 import {
   FloorSpace, tickBubbles, renderBubbles, renderPlayerStatus, bubbleSteer,
   hitPlayer, effSpeed, isFrozen, resetBubbles,
