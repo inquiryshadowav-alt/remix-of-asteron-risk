@@ -4,8 +4,9 @@ import { drawRobot } from './robot';
 import {
   ensurePhiBuffers, addCorpse, addSpawnFx, fireBullet as spawnBullet,
   tickBullets, renderBullets, renderCorpses, renderSpawnFx,
-  PERSONALITY, viewPlayer,
+  PERSONALITY, viewPlayer, awardXP,
 } from './shared';
+import { playSfxThrottled } from '../audio';
 import {
   FloorSpace, tickBubbles, renderBubbles, renderPlayerStatus, bubbleSteer,
   hitPlayer, effSpeed, isFrozen,
