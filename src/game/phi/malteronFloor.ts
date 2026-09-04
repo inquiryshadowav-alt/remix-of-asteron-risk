@@ -657,7 +657,7 @@ export function tickMalteron(
         phi.pendingMalteronSpawns ??= [];
         phi.pendingMalteronSpawns.push(now + 300);
         // +1 XP for the shooter who landed the kill.
-        const killer = state.players.find(p => p.id === b.shooterId);
+        const killer = state.players.find(p => p.id === b.ownerId);
         if (killer) awardXP(killer, 1);
         return true;
       }
