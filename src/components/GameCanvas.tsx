@@ -15,6 +15,8 @@ import DeathOverlay from './DeathOverlay';
 import RankingBoard from './RankingBoard';
 import { preloadGameAssets, DRAGON_AUDIO_SRC } from '@/game/preload';
 import { startGamepadBridge, stopGamepadBridge } from '@/game/gamepad';
+import { playSfx, preloadSfx, stopAllLoops } from '@/game/audio';
+import { awardXP } from '@/game/phi/shared';
 
 interface Props {
   gameState: GameState;
