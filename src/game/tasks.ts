@@ -1,4 +1,5 @@
-import { TaskChallenge, TaskStation, TaskType, TOTAL_TASKS, MAP_WIDTH, MAP_HEIGHT, TeamIndex } from './types';
+import { TaskChallenge, TaskStation, TaskType, TOTAL_TASKS, MAP_WIDTH, MAP_HEIGHT, TeamIndex, JAIL_RECT } from './types';
+import { OBSTACLES, createDoors, resolveCollisions } from './collision';
 
 const TASK_LABELS: Record<TaskType, string> = {
   frequency: '📻 Frequency',
