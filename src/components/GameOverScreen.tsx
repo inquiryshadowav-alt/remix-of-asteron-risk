@@ -1,5 +1,19 @@
+import { useEffect, useState } from 'react';
 import { GameState, TEAM_COLORS, TEAM_NAMES, TeamIndex } from '@/game/types';
 import { computeRankings } from '@/game/phi/match';
+import { playSfx } from '@/game/audio';
+
+/** Bang first, then a 4s beat, then the result card zooms in. */
+function useResultReveal(active: boolean) {
+  const [shown, setShown] = useState(false);
+  useEffect(() => {
+    if (!active) return;
+    playSfx('bang', 0.7, 4000);
+    const t = window.setTimeout(() => setShown(true), 4000);
+    return () => window.clearTimeout(t);
+  }, [active]);
+  return shown;
+}
 
 interface Props {
   state: GameState;
