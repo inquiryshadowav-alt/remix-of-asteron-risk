@@ -9,6 +9,7 @@ const STORAGE_KEY = 'asteron.exitBtnPos';
 
 export default function DraggableExitButton({ onExit }: Props) {
   const btnRef = useRef<HTMLButtonElement>(null);
+  const [confirm, setConfirm] = useState(false);
   const [pos, setPos] = useState<{ x: number; y: number }>(() => {
     if (typeof window === 'undefined') return { x: 12, y: 12 };
     try {

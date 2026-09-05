@@ -15,28 +15,56 @@ const TASK_LABELS: Record<TaskType, string> = {
   door: '🚪 Door',
 };
 
-export function createTaskStations(count: number = TOTAL_TASKS, team: TeamIndex = 0, idOffset: number = 0): TaskStation[] {
-  // Curated, wall-safe positions (verified inside rooms or open Mars ground).
-  const positions = [
-    // Research room
-    { x: 680, y: 150 }, { x: 850, y: 200 }, { x: 950, y: 120 },
-    // Ecosystem room
-    { x: 150, y: 550 }, { x: 280, y: 680 }, { x: 150, y: 730 },
-    // Recover room
-    { x: 1320, y: 550 }, { x: 1450, y: 680 },
-    // Open Mars ground (no walls in these zones)
-    { x: 800, y: 900 }, { x: 500, y: 1050 },
-    { x: 250, y: 200 }, { x: 250, y: 1000 },
-    { x: 1150, y: 200 }, { x: 1150, y: 1000 },
-    { x: 1000, y: 500 }, { x: 600, y: 400 },
-    { x: 1400, y: 950 }, { x: 900, y: 1050 },
-    { x: 450, y: 200 }, { x: 900, y: 720 },
-    { x: 1730, y: 470 }, { x: 1870, y: 870 },
-    { x: 700, y: 1050 }, { x: 1600, y: 1050 },
-    { x: 350, y: 850 }, { x: 1200, y: 850 },
-    { x: 1000, y: 780 }, { x: 550, y: 780 },
-    { x: 1500, y: 200 }, { x: 400, y: 400 },
+const STATION_CLEARANCE = 34;   // free space required around a station
+const STATION_SPACING = 190;    // min distance between two stations
+
+/** True when a point is on open, walkable ground (no wall/rock/jail overlap). */
+function isWalkable(x: number, y: number, doors: ReturnType<typeof createDoors>): boolean {
+  if (x < 90 || y < 90 || x > MAP_WIDTH - 90 || y > MAP_HEIGHT - 90) return false;
+  // keep out of the jail
+  if (
+    x > JAIL_RECT.x - STATION_CLEARANCE && x < JAIL_RECT.x + JAIL_RECT.w + STATION_CLEARANCE &&
+    y > JAIL_RECT.y - STATION_CLEARANCE && y < JAIL_RECT.y + JAIL_RECT.h + STATION_CLEARANCE
+  ) return false;
+  // keep away from rocks/obstacles
+  for (const o of OBSTACLES) {
+    const dx = x - o.x, dy = y - o.y;
+    if (Math.hypot(dx, dy) < o.r + STATION_CLEARANCE) return false;
+  }
+  // the point and a ring around it must survive wall collision resolution
+  const probes: [number, number][] = [
+    [0, 0],
+    [STATION_CLEARANCE, 0], [-STATION_CLEARANCE, 0],
+    [0, STATION_CLEARANCE], [0, -STATION_CLEARANCE],
   ];
+  for (const [ox, oy] of probes) {
+    const r = resolveCollisions(x + ox, y + oy, doors);
+    if (Math.hypot(r.x - (x + ox), r.y - (y + oy)) > 0.5) return false;
+  }
+  return true;
+}
+
+/** Randomized set of walkable Mars task positions, well spread across the map. */
+function randomWalkablePositions(n: number): { x: number; y: number }[] {
+  const doors = createDoors();
+  const out: { x: number; y: number }[] = [];
+  let spacing = STATION_SPACING;
+  let guard = 0;
+  while (out.length < n && guard < 20000) {
+    guard++;
+    const x = 90 + Math.random() * (MAP_WIDTH - 180);
+    const y = 90 + Math.random() * (MAP_HEIGHT - 180);
+    if (!isWalkable(x, y, doors)) continue;
+    if (out.some(p => Math.hypot(p.x - x, p.y - y) < spacing)) continue;
+    out.push({ x: Math.round(x), y: Math.round(y) });
+    if (guard % 4000 === 0) spacing = Math.max(70, spacing * 0.7); // relax if crowded
+  }
+  return out;
+}
+
+export function createTaskStations(count: number = TOTAL_TASKS, team: TeamIndex = 0, idOffset: number = 0): TaskStation[] {
+  const positions = randomWalkablePositions(Math.max(1, Math.min(30, count)));
+
 
   const types: TaskType[] = [
     'frequency', 'morse', 'satellite', 'backup', 'solar',
