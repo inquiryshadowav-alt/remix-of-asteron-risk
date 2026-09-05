@@ -42,7 +42,7 @@ export default function GameOverScreen({ state, onRestart }: Props) {
       const best = phi?.survivorBest ?? 0;
       return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/90 backdrop-blur-sm">
-          <div className="text-center space-y-6 p-8 rounded-xl border border-border bg-card shadow-2xl max-w-md">
+          <div className={`text-center space-y-6 p-8 rounded-xl border border-border bg-card shadow-2xl max-w-md ${revealStyle}`}>
             <h1 className="text-3xl font-bold font-mono tracking-wider text-primary">SURVIVOR RUN ENDED</h1>
             <div className="text-xl font-mono text-white">Floors Survived: <span className="text-primary font-bold">{score}</span></div>
             <div className="text-lg font-mono text-muted-foreground">Highest Record: <span className="text-amber-300 font-bold">{best}</span></div>
@@ -59,7 +59,7 @@ export default function GameOverScreen({ state, onRestart }: Props) {
 
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/92 backdrop-blur-sm p-4">
-        <div className="w-full max-w-md rounded-2xl border border-white/10 bg-card shadow-2xl overflow-hidden font-mono">
+        <div className={`w-full max-w-md rounded-2xl border border-white/10 bg-card shadow-2xl overflow-hidden font-mono ${revealStyle}`}>
           <div className="text-center px-6 pt-7 pb-4">
             <div className="text-[11px] tracking-[0.35em] text-white/40">FINAL RESULT</div>
             <h1
@@ -69,13 +69,13 @@ export default function GameOverScreen({ state, onRestart }: Props) {
               {style.label}
             </h1>
             <div className="text-xs text-muted-foreground mt-1">
-              Floors played: {phi?.floorSequence.length ?? 0} · Your qualified floors: {you?.qualified ?? 0}
+              Floors played: {phi?.floorSequence.length ?? 0} · Your XP: {you?.xp ?? 0}
             </div>
           </div>
 
           <div className="max-h-[42vh] overflow-y-auto border-y border-white/10">
             <div className="grid grid-cols-[28px_1fr_44px_44px] gap-1 px-4 py-2 text-[9px] uppercase tracking-wider text-white/40">
-              <span>#</span><span>Player</span><span className="text-right">Qual</span><span className="text-right">Dead</span>
+              <span>#</span><span>Player</span><span className="text-right">XP</span><span className="text-right">Qual</span>
             </div>
             {rows.map(r => (
               <div
@@ -90,8 +90,8 @@ export default function GameOverScreen({ state, onRestart }: Props) {
                 <span className="truncate text-white/85">
                   {r.name}{r.isHuman && <span className="ml-1 text-[9px] text-amber-200 font-bold">YOU</span>}
                 </span>
+                <span className="text-right font-bold text-amber-200/90">{r.xp}</span>
                 <span className="text-right text-emerald-300/90">{r.qualified}</span>
-                <span className="text-right text-red-300/80">{r.died}</span>
               </div>
             ))}
           </div>
@@ -119,7 +119,7 @@ export default function GameOverScreen({ state, onRestart }: Props) {
     const color = winner === 'RED' ? '#e03030' : winner === 'BLUE' ? '#4a90d9' : '#888';
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/90 backdrop-blur-sm">
-        <div className="text-center space-y-6 p-8 rounded-xl border border-border bg-card shadow-2xl max-w-md">
+        <div className={`text-center space-y-6 p-8 rounded-xl border border-border bg-card shadow-2xl max-w-md ${revealStyle}`}>
           <h1 className="text-4xl font-bold font-mono tracking-wider" style={{ color }}>
             {winner === 'DRAW' ? '🤝 IT\'S A DRAW!' : `🏆 ${winner} TEAM WINS!`}
           </h1>
@@ -156,7 +156,7 @@ export default function GameOverScreen({ state, onRestart }: Props) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/90 backdrop-blur-sm">
-      <div className="text-center space-y-6 p-8 rounded-xl border border-border bg-card shadow-2xl max-w-md">
+      <div className={`text-center space-y-6 p-8 rounded-xl border border-border bg-card shadow-2xl max-w-md ${revealStyle}`}>
         <h1 className="text-4xl font-bold font-mono tracking-wider" style={{ color }}>
           🏆 {teamName} TEAM WINS!
         </h1>
