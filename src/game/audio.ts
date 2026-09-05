@@ -3,7 +3,7 @@ import slideUrl from '@/assets/sfx-slide.wav';
 import taskWinUrl from '@/assets/sfx-task-win.wav';
 import elementUrl from '@/assets/sfx-element.wav';
 import bangUrl from '@/assets/sfx-bang.mp3';
-import bgmUrl from '@/assets/dragon-chase.mp3';
+import bgmUrl from '@/assets/bgm-electron.mp3';
 
 /** All sound effects are bundled with the build (no CDN dependency). */
 export const SFX = {
