@@ -64,6 +64,8 @@ function randomWalkablePositions(n: number): { x: number; y: number }[] {
 
 export function createTaskStations(count: number = TOTAL_TASKS, team: TeamIndex = 0, idOffset: number = 0): TaskStation[] {
   const positions = randomWalkablePositions(Math.max(1, Math.min(30, count)));
+  if (positions.length === 0) positions.push({ x: 800, y: 900 }, { x: 500, y: 1050 }, { x: 1000, y: 500 });
+
 
 
   const types: TaskType[] = [
