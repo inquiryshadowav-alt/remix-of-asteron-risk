@@ -27,6 +27,12 @@ const PLACE_STYLE: Record<number, { color: string; label: string }> = {
 };
 
 export default function GameOverScreen({ state, onRestart }: Props) {
+  const revealed = useResultReveal(true);
+  const revealClass = revealed
+    ? 'scale-100 opacity-100 blur-0'
+    : 'scale-[0.35] opacity-0 blur-sm';
+  const revealStyle = 'transition-all duration-700 ease-out will-change-transform ' + revealClass;
+
   // PHI Castle result
   if (state.mode === 'phi') {
     const phi = state.phi;
